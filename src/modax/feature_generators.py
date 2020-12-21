@@ -63,7 +63,7 @@ def library_backward(f, x):
     # First derivs
     df = partial(vgrad_backward, f)
     d2f = partial(vgrad_backward, lambda y: df(y)[:, [1]])
-    d3f = partial(vgrad_backward(), lambda y: d2f(y)[:, [1]])
+    d3f = partial(vgrad_backward, lambda y: d2f(y)[:, [1]])
 
     pred = f(x)
     dt, dx = df(x).T
