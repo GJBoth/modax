@@ -1,18 +1,8 @@
 import jax
-from typing import Sequence, Callable
-from jax import numpy as jnp, lax
-from flax import linen as nn
+from jax import numpy as jnp
 from jax.scipy.special import erfc
 from functools import partial
 from jax.ops import index_update, index
-from modax.layers import MultiTaskDense
-
-
-def mse_loss(y_pred, y):
-    def squared_error(y, y_pred):
-        return jnp.inner(y - y_pred, y - y_pred) / 2.0
-
-    return jnp.mean(jax.vmap(squared_error)(y, y_pred), axis=0)
 
 
 def burgers(x, t, v, A):

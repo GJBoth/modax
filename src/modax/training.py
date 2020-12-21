@@ -1,7 +1,7 @@
 import jax
 from jax import numpy as jnp
 from functools import partial
-from modax.code import mse_loss
+from modax.losses import mse_loss
 
 
 def train_step(model, x, y):
