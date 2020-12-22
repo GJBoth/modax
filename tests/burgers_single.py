@@ -39,3 +39,5 @@ for i in jnp.arange(max_epochs):
         print(f"Loss step {i}: {loss}")
 t_end = time()
 print(t_end - t_start)
+theta, coeffs = model.apply(optimizer.target, X_train)[2:]
+print(coeffs * jnp.linalg.norm(theta, axis=0, keepdims=True).T)
