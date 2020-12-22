@@ -40,5 +40,4 @@ class MultiTaskMLP(nn.Module):
         for feature in self.specific_features[:-1]:
             x = nn.tanh(MultiTaskDense(feature, self.n_tasks)(x))
         x = MultiTaskDense(self.specific_features[-1], self.n_tasks)(x)
-        return x
-
+        return x.squeeze().T

@@ -35,8 +35,9 @@ def library_forward(f, x):
         ],
         axis=-1,
     )
+
     theta = (jnp.expand_dims(u, axis=-1) @ jnp.expand_dims(du, axis=-2)).reshape(
-        *pred.shape[:2], -1
+        u.shape[0], u.shape[1], 12
     )
 
     return pred.squeeze().T, dt, theta

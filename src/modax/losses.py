@@ -25,3 +25,9 @@ def loss_fn_pinn(params, model, x, y):
     prediction, dt, theta, coeffs = model.apply(params, x)
     loss = mse(prediction, y) + mse(dt.squeeze(), (theta @ coeffs).squeeze())
     return loss
+
+
+def loss_fn_pinn_multi(params, model, x, y):
+    prediction, dt, theta, coeffs = model.apply(params, x)
+    loss = mse(prediction, y) + mse(dt.squeeze().T, (theta @ coeffs).squeeze().T)
+    return loss

@@ -39,11 +39,10 @@ class LeastSquares(nn.Module):
 class LeastSquaresMT(nn.Module):
     @nn.compact
     def __call__(self, inputs):
-        dt, theta = inputs
+        theta, dt = inputs
         coeffs = self.fit(theta, dt)
 
-        reg_loss = mse(dt.squeeze(), (theta @ coeffs).squeeze())
-        return reg_loss, coeffs
+        return coeffs
 
     def fit(self, X, y):
         return jax.vmap(jnp.linalg.lstsq, in_axes=(0, 0), out_axes=0)(X, y)[0]
