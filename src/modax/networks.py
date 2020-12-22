@@ -1,8 +1,9 @@
-from typing import Sequence
+from typing import Sequence, Callable
 from jax import numpy as jnp
 from flax import linen as nn
 
-from modax.layers import MultiTaskDense
+from modax.layers import LeastSquares, MultiTaskDense
+from modax.feature_generators import library_backward
 
 
 class MLP(nn.Module):
@@ -40,3 +41,4 @@ class MultiTaskMLP(nn.Module):
             x = nn.tanh(MultiTaskDense(feature, self.n_tasks)(x))
         x = MultiTaskDense(self.specific_features[-1], self.n_tasks)(x)
         return x
+

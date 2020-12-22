@@ -3,7 +3,7 @@ from jax import lax
 from flax import linen as nn
 import jax.numpy as jnp
 import jax
-from modax.losses import mse_loss
+from modax.losses import mse
 
 
 class MultiTaskDense(nn.Module):
@@ -30,7 +30,7 @@ class LeastSquares(nn.Module):
         dt, theta = inputs
         coeffs = self.fit(theta, dt)
 
-        reg_loss = mse_loss(dt.squeeze(), (theta @ coeffs).squeeze())
+        reg_loss = mse(dt.squeeze(), (theta @ coeffs).squeeze())
         return reg_loss, coeffs
 
     def fit(self, X, y):
@@ -38,6 +38,7 @@ class LeastSquares(nn.Module):
 
 
 class LeastSquaresMT(nn.Module):
+    @nn.compact
     def __call__(self, inputs):
         dt, theta = inputs
         coeffs = self.fit(theta, dt)
