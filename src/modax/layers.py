@@ -27,11 +27,10 @@ class MultiTaskDense(nn.Module):
 
 class LeastSquares(nn.Module):
     def __call__(self, inputs):
-        dt, theta = inputs
+        theta, dt = inputs
         coeffs = self.fit(theta, dt)
 
-        reg_loss = mse(dt.squeeze(), (theta @ coeffs).squeeze())
-        return reg_loss, coeffs
+        return coeffs
 
     def fit(self, X, y):
         return jnp.linalg.lstsq(X, y)[0]
@@ -43,7 +42,7 @@ class LeastSquaresMT(nn.Module):
         dt, theta = inputs
         coeffs = self.fit(theta, dt)
 
-        reg_loss = mse_loss(dt.squeeze(), (theta @ coeffs).squeeze())
+        reg_loss = mse(dt.squeeze(), (theta @ coeffs).squeeze())
         return reg_loss, coeffs
 
     def fit(self, X, y):

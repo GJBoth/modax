@@ -14,6 +14,6 @@ class Deepmod(nn.Module):
     @nn.compact  # this function decorator lazily intializes the model, so it makes the layers the first time we call it
     def __call__(self, inputs):
         prediction, dt, theta = library_backward(MLP(self.features), inputs)
-        coeffs, reg_loss = LeastSquares()((theta, dt))
-        return prediction, dt, theta, coeffs, reg_loss
+        coeffs = LeastSquares()((theta, dt))
+        return prediction, dt, theta, coeffs
 
