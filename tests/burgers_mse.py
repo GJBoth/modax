@@ -5,7 +5,7 @@ from flax import optim
 from modax.models import Deepmod
 from modax.training import create_update
 from modax.losses import loss_fn_mse
-
+from modax.logging import Logger
 from modax.data.burgers import burgers
 from time import time
 
@@ -32,13 +32,16 @@ _ = update(optimizer)  # triggering compilation
 
 # Running to convergence
 max_epochs = 10001
+logger = Logger()
 t_start = time()
-for i in jnp.arange(max_epochs):
-    optimizer, loss = update(optimizer)
-    if i % 1000 == 0:
-        print(f"Loss step {i}: {loss}")
+for epoch in jnp.arange(max_epochs):
+    optimizer, metrics = update(optimizer)
+    if epoch % 1000 == 0:
+        print(f"Loss step {epoch}: {metrics['loss']}")
+    if epoch % 100 == 0:
+        logger.write(metrics, epoch)
 t_end = time()
-
+logger.close()
 print(t_end - t_start)
 theta, coeffs = model.apply(optimizer.target, X_train)[2:]
 print(coeffs * jnp.linalg.norm(theta, axis=0, keepdims=True).T)
