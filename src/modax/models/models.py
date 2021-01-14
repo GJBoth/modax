@@ -41,13 +41,13 @@ class DeepmodBayes(nn.Module):
     @nn.compact
     def __call__(self, inputs):
         prediction, dt, theta = library_backward(MLP(self.features), inputs)
-        coeffs = MaskedLeastSquares()((theta, dt))
+        coeffs = MaskedLeastSquares()((dt, theta))
 
         z = self.param("likelihood_params", self.likelihood_params_init, prediction, dt)
         return prediction, dt, theta, coeffs, z
 
     @staticmethod
-    def likelihood_params_init(prediction, dt):
+    def likelihood_params_init(key, prediction, dt):
         z_mse = -jnp.log(jnp.var(prediction, axis=0))
         z_reg = -jnp.log(jnp.var(dt, axis=0))
         z = jnp.stack([z_mse, z_reg], axis=1)

@@ -11,11 +11,22 @@ def loss_fn_mse_grad(params, state, model, x, y):
     )
 
     tau = jnp.exp(-z[0, 0])  # tau precision of mse
+    nu = jnp.exp(-z[0, 1])  # precision of reg
     p_mse, MSE = normal_LL(prediction, y, tau)
+    p_reg, reg = normal_LL(dt, theta @ coeffs, nu)
 
     loss = -p_mse
 
-    metrics = {"loss": loss, "p_mse": p_mse, "mse": MSE, "coeff": coeffs, "tau": tau}
+    metrics = {
+        "loss": loss,
+        "p_mse": p_mse,
+        "mse": MSE,
+        "p_reg": p_reg,
+        "reg": reg,
+        "coeff": coeffs,
+        "tau": tau,
+        "nu": nu,
+    }
     return loss, (updated_state, metrics, (prediction, dt, theta, coeffs))
 
 
@@ -29,9 +40,22 @@ def loss_fn_mse_precalc(params, state, model, x, y):
 
     tau_ml = 1 / jnp.mean((prediction - y) ** 2)
     p_mse, MSE = normal_LL(prediction, y, tau_ml)
+
+    nu_ml = 1 / jnp.mean((dt - theta @ coeffs) ** 2)
+    p_reg, reg = normal_LL(dt, theta @ coeffs, nu_ml)
+
     loss = -p_mse
 
-    metrics = {"loss": loss, "mse": MSE, "coeff": coeffs, "tau": tau_ml}
+    metrics = {
+        "loss": loss,
+        "p_mse": p_mse,
+        "mse": MSE,
+        "p_reg": p_reg,
+        "reg": reg,
+        "coeff": coeffs,
+        "tau": tau_ml,
+        "nu": nu_ml,
+    }
     return loss, (updated_state, metrics, (prediction, dt, theta, coeffs))
 
 

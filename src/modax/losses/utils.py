@@ -17,7 +17,7 @@ def normal_LL(x, mu, tau):
     # tau = 1 / sigma**2, for numerical reasons.
     n_samples = x.shape[0]
 
-    mse = 1 / 2 * jnp.mean((x - mu) ** 2, axis=0)
+    mse = 1 / 2 * jnp.mean((x - mu) ** 2)
     # 2 before tau to compensate for 1/2
     p = -n_samples / 2 * (2 * tau * mse - jnp.log(tau) + jnp.log(2 * jnp.pi))
     return p, mse
