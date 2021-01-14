@@ -1,8 +1,9 @@
-from typing import Sequence, Callable
+from typing import Sequence
 from ..feature_generators.feature_generators import library_backward, library_forward
-from ..layers.regression import MaskedLeastSquares, LeastSquaresMT, LeastSquares
+from ..layers.regression import MaskedLeastSquares, LeastSquaresMT
 from .networks import MLP, MultiTaskMLP
 from flax import linen as nn
+import jax.numpy as jnp
 
 
 class Deepmod(nn.Module):
@@ -35,16 +36,20 @@ class DeepmodMultiExp(nn.Module):
 
 
 class DeepmodBayes(nn.Module):
-    """Simple feed-forward NN."""
-
-    features: Sequence[int]  # this is dataclass, so we dont use __init__
-    noise_init: Callable = nn.initializers.zeros
+    features: Sequence[int]
 
     @nn.compact
     def __call__(self, inputs):
         prediction, dt, theta = library_backward(MLP(self.features), inputs)
-        coeffs = LeastSquares()((theta, dt))
+        coeffs = MaskedLeastSquares()((theta, dt))
 
-        s = self.param("noise_mse", self.noise_init, (1,))
-        t = self.param("noise_reg", self.noise_init, (1,))
-        return prediction, dt, theta, coeffs, s, t
+        z = self.param("likelihood_params", self.likelihood_params_init, prediction, dt)
+        return prediction, dt, theta, coeffs, z
+
+    @staticmethod
+    def likelihood_params_init(prediction, dt):
+        z_mse = -jnp.log(jnp.var(prediction, axis=0))
+        z_reg = -jnp.log(jnp.var(dt, axis=0))
+        z = jnp.stack([z_mse, z_reg], axis=1)
+        return z
+

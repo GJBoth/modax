@@ -1,135 +1,222 @@
 import jax.numpy as jnp
-from modax.losses.utils import neg_LL
-from jax.scipy.stats import gamma, t
+from modax.losses.utils import normal_LL, gamma_LL, precision
 
-
-def loss_fn_mse_bayes(params, model, x, y):
+# Maximum likelihood stuff
+def loss_fn_mse_grad(params, state, model, x, y):
     """ first argument should always be params!
     """
-    prediction, dt, theta, coeffs, s, t = model.apply(params, x)
-    tau = jnp.exp(-s)  # tau precision of mse
+    variables = {"params": params, **state}
+    (prediction, dt, theta, coeffs, z), updated_state = model.apply(
+        variables, x, mutable=list(state.keys())
+    )
 
-    MSE = neg_LL(prediction, y, tau)
-    loss = MSE
+    tau = jnp.exp(-z[0, 0])  # tau precision of mse
+    p_mse, MSE = normal_LL(prediction, y, tau)
 
-    metrics = {"loss": loss, "mse": MSE, "coeff": coeffs, "tau": tau}
-    return loss, metrics
+    loss = -p_mse
+
+    metrics = {"loss": loss, "p_mse": p_mse, "mse": MSE, "coeff": coeffs, "tau": tau}
+    return loss, (updated_state, metrics, (prediction, dt, theta, coeffs))
 
 
-def loss_fn_multitask(params, model, x, y):
+def loss_fn_mse_precalc(params, state, model, x, y):
     """ first argument should always be params!
     """
-    prediction, dt, theta, coeffs, s, t = model.apply(params, x)
-    tau = jnp.exp(-s)
-    beta = jnp.exp(-t)
+    variables = {"params": params, **state}
+    (prediction, dt, theta, coeffs, z), updated_state = model.apply(
+        variables, x, mutable=list(state.keys())
+    )
 
-    MSE = neg_LL(prediction, y, tau)
-    Reg = neg_LL(dt.squeeze(), (theta @ coeffs).squeeze(), beta)
-    loss = MSE + Reg
+    tau_ml = 1 / jnp.mean((prediction - y) ** 2)
+    p_mse, MSE = normal_LL(prediction, y, tau_ml)
+    loss = -p_mse
+
+    metrics = {"loss": loss, "mse": MSE, "coeff": coeffs, "tau": tau_ml}
+    return loss, (updated_state, metrics, (prediction, dt, theta, coeffs))
+
+
+def loss_fn_multitask_grad(params, state, model, x, y):
+    """ first argument should always be params!
+    """
+    variables = {"params": params, **state}
+    (prediction, dt, theta, coeffs, z), updated_state = model.apply(
+        variables, x, mutable=list(state.keys())
+    )
+
+    tau = jnp.exp(-z[0, 0])  # tau precision of mse
+    nu = jnp.exp(-z[0, 1])  # precision of reg
+    p_mse, MSE = normal_LL(prediction, y, tau)
+    p_reg, reg = normal_LL(dt, theta @ coeffs, nu)
+
+    loss = -(p_mse + p_reg)
 
     metrics = {
         "loss": loss,
+        "p_mse": p_mse,
         "mse": MSE,
-        "reg": Reg,
+        "p_reg": p_reg,
+        "reg": reg,
         "coeff": coeffs,
-        "beta": beta,
         "tau": tau,
+        "nu": nu,
     }
-    return loss, metrics
+    return loss, (updated_state, metrics, (prediction, dt, theta, coeffs))
 
 
-def loss_fn_pinn_bayes(params, model, x, y):
+def loss_fn_multitask_precalc(params, state, model, x, y):
     """ first argument should always be params!
     """
-    prediction, dt, theta, coeffs, s, t = model.apply(params, x)
-    tau = jnp.exp(-s)
-    beta = jnp.exp(-t)
-
-    MSE = neg_LL(prediction, y, tau)
-    Reg = neg_LL(dt.squeeze(), (theta @ coeffs).squeeze(), beta)
-    n_samples = prediction.shape[0]
-    prior = -jnp.sum(
-        gamma.logpdf(beta, a=n_samples / 2, scale=1 / (n_samples / 2 * 1e-4))
+    variables = {"params": params, **state}
+    (prediction, dt, theta, coeffs, z), updated_state = model.apply(
+        variables, x, mutable=list(state.keys())
     )
-    loss = MSE + Reg + prior
+
+    tau_ml = 1 / jnp.mean((prediction - y) ** 2)
+    p_mse, MSE = normal_LL(prediction, y, tau_ml)
+
+    nu_ml = 1 / jnp.mean((dt - theta @ coeffs) ** 2)
+    p_reg, reg = normal_LL(dt, theta @ coeffs, nu_ml)
+
+    loss = -(p_mse + p_reg)
 
     metrics = {
         "loss": loss,
+        "p_mse": p_mse,
         "mse": MSE,
-        "reg": Reg,
+        "p_reg": p_reg,
+        "reg": reg,
         "coeff": coeffs,
-        "beta": beta,
-        "tau": tau,
+        "tau": tau_ml,
+        "nu": nu_ml,
     }
-    return loss, metrics
+    return loss, (updated_state, metrics, (prediction, dt, theta, coeffs))
 
 
-def loss_fn_mse_bayes_precalc(params, model, x, y):
+# Bayesian multitask
+# setting priors for these to zero should give same results as functions above.
+def loss_fn_mse_bayes_grad(params, state, model, x, y, prior_params_mse=(0.0, 0.0)):
     """ first argument should always be params!
     """
-    prediction, dt, theta, coeffs, s, t = model.apply(params, x)
 
-    sigma_ml = jnp.mean((prediction - y) ** 2)
-    tau = 1 / sigma_ml
-    MSE = neg_LL(prediction, y, tau)
-    loss = MSE
-
-    metrics = {"loss": loss, "mse": MSE, "coeff": coeffs, "tau": tau}
-    return loss, metrics
-
-
-def loss_fn_pinn_bayes_full(params, model, x, y):
-    """ first argument should always be params!
-    """
-    prediction, dt, theta, coeffs = model.apply(params, x)[:-2]
-    n_samples = prediction.shape[0]
-    a0, b0 = n_samples / 2, 1 / (n_samples / 2 * 1e-4)
-    a_post, b_post = (
-        a0 + n_samples / 2,
-        jnp.sqrt(b0 + 1 / 2 * jnp.sum(dt - theta @ coeffs)),
+    variables = {"params": params, **state}
+    (prediction, dt, theta, coeffs, z), updated_state = model.apply(
+        variables, x, mutable=list(state.keys())
     )
 
-    MSE = -jnp.sum(
-        t.logpdf(
-            prediction,
-            2 * n_samples / 2,
-            loc=y,
-            scale=jnp.sqrt(jnp.mean((prediction - y) ** 2)),
-        )
-    )
+    tau = jnp.exp(-z[0, 0])  # tau precision of mse
+    p_mse, MSE = normal_LL(prediction, y, tau)
+    p_mse += gamma_LL(tau, *prior_params_mse)  # adding prior
 
-    Reg = -jnp.sum(t.logpdf(dt, 2 * a_post, loc=theta @ coeffs, scale=b_post / a_post))
-    loss = MSE + Reg
+    loss = -p_mse
 
-    metrics = {"loss": loss, "mse": MSE, "reg": Reg, "coeff": coeffs}
-    return loss, metrics
+    metrics = {"loss": loss, "p_mse": p_mse, "mse": MSE, "coeff": coeffs, "tau": tau}
+    return loss, (updated_state, metrics, (prediction, dt, theta, coeffs))
 
 
-def loss_fn_pinn_bayes_approximate(params, model, x, y):
+def loss_fn_mse_bayes_typeII(params, state, model, x, y, prior_params_mse=(0.0, 0.0)):
     """ first argument should always be params!
     """
-    prediction, dt, theta, coeffs = model.apply(params, x)[:-2]
-    n_samples = prediction.shape[0]
-    a0, b0 = n_samples / 2, 1 / (n_samples / 2 * 1e-4)
 
-    sigma_ml = jnp.mean((prediction - y) ** 2)
-    tau = 1 / sigma_ml
-    MSE = neg_LL(prediction, y, tau)
+    variables = {"params": params, **state}
+    (prediction, dt, theta, coeffs, z), updated_state = model.apply(
+        variables, x, mutable=list(state.keys())
+    )
 
-    sigma_ml = jnp.mean((dt - theta @ coeffs) ** 2)
-    beta = (n_samples + 2 * (a0 - 1)) / (n_samples * sigma_ml + 2 * b0)
-    Reg = neg_LL(dt, theta @ coeffs, beta)
+    # Calculating precision of mse
+    tau = precision(y, prediction, *prior_params_mse)
+    p_mse, MSE = normal_LL(prediction, y, tau)
+    p_mse += gamma_LL(tau, *prior_params_mse)  # adding prior
 
-    prior = -jnp.sum(gamma.logpdf(beta, a=a0, scale=b0))
-
-    loss = MSE + Reg + prior
+    loss = -p_mse
 
     metrics = {
         "loss": loss,
+        "p_mse": p_mse,
         "mse": MSE,
-        "reg": Reg,
         "coeff": coeffs,
         "tau": tau,
-        "beta": beta,
     }
-    return loss, metrics
+    return loss, (updated_state, metrics, (prediction, dt, theta, coeffs))
+
+
+def loss_fn_pinn_bayes_grad(
+    params, state, model, x, y, prior_params_reg, prior_params_mse=(0.0, 0.0)
+):
+    """ first argument should always be params!
+    """
+
+    variables = {"params": params, **state}
+    (prediction, dt, theta, coeffs, z), updated_state = model.apply(
+        variables, x, mutable=list(state.keys())
+    )
+
+    # MSE
+    tau = jnp.exp(-z[0, 0])  # tau precision of mse
+    p_mse, MSE = normal_LL(prediction, y, tau)
+    p_mse += gamma_LL(tau, *prior_params_mse)  # adding prior
+
+    # Reg
+    nu = jnp.exp(-z[0, 1])  # nu precision of reg
+    p_reg, reg = normal_LL(dt, theta @ coeffs, nu)
+    p_reg += gamma_LL(nu, *prior_params_reg)  # adding prior
+
+    loss = -(p_mse + p_reg)
+
+    metrics = {
+        "loss": loss,
+        "p_mse": p_mse,
+        "mse": MSE,
+        "p_reg": p_reg,
+        "reg": reg,
+        "coeff": coeffs,
+        "tau": tau,
+        "nu": nu,
+    }
+    return loss, (updated_state, metrics, (prediction, dt, theta, coeffs))
+
+
+def loss_fn_pinn_bayes_typeII(
+    params, state, model, x, y, prior_params_reg, prior_params_mse=(0.0, 0.0)
+):
+
+    variables = {"params": params, **state}
+    (prediction, dt, theta, coeffs, z), updated_state = model.apply(
+        variables, x, mutable=list(state.keys())
+    )
+
+    # Calculating precision of mse
+    tau = precision(y, prediction, *prior_params_mse)
+    p_mse, MSE = normal_LL(prediction, y, tau)
+    p_mse += gamma_LL(tau, *prior_params_mse)  # adding prior
+
+    # Calculating precision of reg
+    nu = precision(
+        dt, theta @ coeffs, *prior_params_reg
+    )  # calculates nu given gamma prior
+    p_reg, reg = normal_LL(dt, theta @ coeffs, nu)
+    p_reg += gamma_LL(nu, *prior_params_reg)  # adding priorr
+
+    loss = -(p_mse + p_reg)
+
+    metrics = {
+        "loss": loss,
+        "p_mse": p_mse,
+        "mse": MSE,
+        "p_reg": p_reg,
+        "reg": reg,
+        "coeff": coeffs,
+        "tau": tau,
+        "nu": nu,
+    }
+    return loss, (updated_state, metrics, (prediction, dt, theta, coeffs))
+
+
+# Fully bayesian stuff?
+
+
+# Different constraints
+
+# Bay.Reg.
+
+
+# SBL
