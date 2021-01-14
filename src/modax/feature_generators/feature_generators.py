@@ -1,18 +1,6 @@
-import jax
 from jax import numpy as jnp
 from functools import partial
-from jax.ops import index_update, index
-
-
-def vgrad_backward(f, x):
-    y, vjp_fn = jax.vjp(f, x)
-    return vjp_fn(jnp.ones(y.shape))[0]
-
-
-def vgrad_forward(f, x, input_idx):
-    s = index_update(jnp.zeros_like(x), index[:, input_idx], 1)
-    _, jvp = jax.jvp(f, (x,), (s,))
-    return jvp
+from .utils import vgrad_backward, vgrad_forward
 
 
 def library_forward(f, x):
@@ -76,4 +64,3 @@ def library_backward(f, x):
         -1, 12
     )  # maybe rewrite using vmap?
     return pred, dt[:, None], theta
-

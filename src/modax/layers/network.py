@@ -1,9 +1,6 @@
 from typing import Callable
 from jax import lax
 from flax import linen as nn
-import jax.numpy as jnp
-import jax
-from modax.losses import mse
 
 
 class MultiTaskDense(nn.Module):
@@ -23,26 +20,3 @@ class MultiTaskDense(nn.Module):
         bias = self.param("bias", self.bias_init, (self.n_tasks, 1, self.features))
         y = y + bias
         return y
-
-
-class LeastSquares(nn.Module):
-    def __call__(self, inputs):
-        theta, dt = inputs
-        coeffs = self.fit(theta, dt)
-
-        return coeffs
-
-    def fit(self, X, y):
-        return jnp.linalg.lstsq(X, y)[0]
-
-
-class LeastSquaresMT(nn.Module):
-    @nn.compact
-    def __call__(self, inputs):
-        theta, dt = inputs
-        coeffs = self.fit(theta, dt)
-
-        return coeffs
-
-    def fit(self, X, y):
-        return jax.vmap(jnp.linalg.lstsq, in_axes=(0, 0), out_axes=0)(X, y)[0]

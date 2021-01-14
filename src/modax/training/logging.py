@@ -7,7 +7,7 @@ class Logger:
 
     def write(self, metrics, epoch):
         for key, value in metrics.items():
-            if value.ndim == 0:
+            if value.squeeze().ndim == 0:
                 self.writer.add_scalar(key, value, epoch)
             elif value.squeeze().ndim == 1:
                 components = {
