@@ -7,6 +7,7 @@ from flax.core import freeze
 from .utils import create_stateful_update
 from sklearn.model_selection import train_test_split
 from .convergence import Convergence
+from modax.training.utils import validation_metric
 
 
 def train(
@@ -71,6 +72,7 @@ def train_probabilistic(
     optimizer,
     state,
     loss_fn,
+    val_fn,
     mask_update_fn,
     X,
     y,
@@ -88,11 +90,7 @@ def train_probabilistic(
     update = create_stateful_update(
         loss_fn, model=model, x=X_train, y=y_train, **loss_fn_kwargs
     )
-    validation_metric = jit(
-        lambda opt, state: loss_fn(
-            opt.target, state, model, X_test, y_test, **loss_fn_kwargs
-        )[1][1]
-    )
+
     logger = Logger()
     scheduler = mask_scheduler()
     converged = Convergence()
@@ -105,20 +103,18 @@ def train_probabilistic(
             print(f"Loss step {epoch}: {train_metrics['loss']}")
 
         if epoch % 25 == 0:
-            val_metrics = validation_metric(
-                optimizer, state
-            )  # this is not correct, val needs to calculated with forward val.
-            metrics = {
-                **train_metrics,
-                "val_p_mse": val_metrics["p_mse"],
-                "val_p_reg": val_metrics["p_reg"],
-                "val_mse": val_metrics["mse"],
-                "val_reg": val_metrics["reg"],
-            }
+            val_metrics = val_fn(
+                optimizer,
+                state,
+                X_test,
+                y_test,
+                (train_metrics["tau"], train_metrics["nu"]),
+            )
+            metrics = {**train_metrics, **val_metrics}
             logger.write(metrics, epoch)
 
             apply_sparsity, optimizer = scheduler(
-                val_metrics["mse"], epoch, optimizer
+                metrics["val_mse"], epoch, optimizer
             )  # we need to find the minimum neg LL of the mse
 
             if apply_sparsity:
@@ -135,7 +131,16 @@ def train_probabilistic(
 
 
 def train_probabilistic_mse(
-    model, optimizer, state, loss_fn, X, y, max_epochs=1e4, split=0.2, rand_seed=42,
+    model,
+    optimizer,
+    state,
+    loss_fn,
+    val_fn,
+    X,
+    y,
+    max_epochs=1e4,
+    split=0.2,
+    rand_seed=42,
 ):
     # Making test / train
     X_train, X_test, y_train, y_test = train_test_split(
@@ -144,34 +149,28 @@ def train_probabilistic_mse(
 
     # Creating update functions
     update = create_stateful_update(loss_fn, model=model, x=X_train, y=y_train)
-    validation_metric = jit(
-        lambda opt, state: loss_fn(opt.target, state, model, X_test, y_test)[1][1]
-    )
     logger = Logger()
     scheduler = mask_scheduler()
 
     for epoch in jnp.arange(max_epochs):
         (optimizer, state), train_metrics, output = update(optimizer, state)
-        prediction, dt, theta, coeffs = output
 
         if epoch % 1000 == 0:
             print(f"Loss step {epoch}: {train_metrics['loss']}")
 
         if epoch % 25 == 0:
-            val_metrics = validation_metric(
-                optimizer, state
-            )  # this is not correct, val needs to calculated with forward val.
-            metrics = {
-                **train_metrics,
-                "val_p_mse": val_metrics["p_mse"],
-                "val_p_reg": val_metrics["p_reg"],
-                "val_mse": val_metrics["mse"],
-                "val_reg": val_metrics["reg"],
-            }
+            val_metrics = val_fn(
+                optimizer,
+                state,
+                X_test,
+                y_test,
+                (train_metrics["tau"], train_metrics["nu"]),
+            )
+            metrics = {**train_metrics, **val_metrics}
             logger.write(metrics, epoch)
 
             apply_sparsity, optimizer = scheduler(
-                val_metrics["mse"], epoch, optimizer
+                metrics["val_mse"], epoch, optimizer
             )  # we need to find the minimum neg LL of the mse
 
             if apply_sparsity:
