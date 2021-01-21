@@ -4,8 +4,8 @@ from jax import jit, value_and_grad, numpy as jnp
 from flax import linen as nn
 from typing import Sequence, Tuple
 from modax.feature_generators import library_backward
-from modax.networks import MLP
-from modax.losses import neg_LL
+from modax.models.networks import MLP
+from modax.losses.utils import normal_LL
 
 from functools import partial
 from jax import lax
@@ -202,7 +202,7 @@ def loss_fn_pinn_bayes_regression(params, state, model, x, y):
     # MSE
     sigma_ml = jnp.mean((prediction - y) ** 2)
     tau = 1 / sigma_ml
-    MSE = neg_LL(prediction, y, tau)
+    MSE = -normal_LL(prediction, y, tau)
 
     # Reg
     theta_normed = theta / jnp.linalg.norm(theta, axis=0, keepdims=True)
