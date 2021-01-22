@@ -189,6 +189,7 @@ def loss_fn_pinn_bayes_typeII(
         "coeff": coeffs,
         "tau": tau,
         "nu": nu,
+        "normed_coeffs": coeffs * jnp.linalg.norm(theta, axis=0)[:, None],
     }
     return loss, (updated_state, metrics, (prediction, dt, theta, coeffs))
 

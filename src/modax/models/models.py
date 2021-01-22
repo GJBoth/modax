@@ -4,7 +4,11 @@ from jax._src.numpy.lax_numpy import zeros
 
 from modax.losses.utils import precision
 from ..feature_generators.feature_generators import library_backward, library_forward
-from ..layers.regression import MaskedLeastSquares, LeastSquaresMT
+from ..layers.regression import (
+    MaskedLeastSquares,
+    LeastSquaresMT,
+    BayesianMaskedLeastSquares,
+)
 from .networks import MLP, MultiTaskMLP
 from flax import linen as nn
 import jax.numpy as jnp
@@ -85,3 +89,18 @@ class DeepmodBayesPrecalc(nn.Module):
         return prediction, dt, theta, coeffs, z
 
 """
+
+
+class DeepmodBayesNew(nn.Module):
+    features: Sequence[int]
+    prior_params_reg: Tuple[float]
+
+    @nn.compact
+    def __call__(self, inputs):
+        prediction, dt, theta = library_backward(MLP(self.features), inputs)
+        p_reg, (coeffs, reg) = BayesianMaskedLeastSquares(self.prior_params_reg)(
+            (dt, theta)
+        )
+
+        return prediction, p_reg, (reg, coeffs)
+
