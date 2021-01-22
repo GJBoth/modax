@@ -4,7 +4,7 @@ from modax.training.convergence import Convergence
 from .sparsity_scheduler import mask_scheduler
 from .logging import Logger
 from flax.core import freeze
-from .utils import create_stateful_update
+from ..utils import create_stateful_update
 from sklearn.model_selection import train_test_split
 from .convergence import Convergence
 

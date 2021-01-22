@@ -1,4 +1,4 @@
-from modax.losses.utils import mse
+from .utils import mse
 
 
 def loss_fn_mse(params, model, x, y):

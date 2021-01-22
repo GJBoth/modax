@@ -1,5 +1,5 @@
 from jax import random
-from modax.losses.standard import loss_fn_pinn_stateful
+from losses.standard import loss_fn_pinn_stateful
 from ..models.models import Deepmod
 from flax import optim
 from .training import train

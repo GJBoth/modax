@@ -1,5 +1,5 @@
 from typing import Sequence
-from ..feature_generators.feature_generators import library_backward, library_forward
+from ..layers.feature_generators import library_backward, library_forward
 from ..layers.regression import MaskedLeastSquares, LeastSquaresMT
 from .networks import MLP, MultiTaskMLP
 from flax import linen as nn
