@@ -1,40 +1,19 @@
 from .utils import mse
 
 
-def loss_fn_mse(params, model, x, y):
-    """first argument should always be params!"""
-    prediction = model.apply(params, x)[0]
-    loss = mse(prediction, y)
-    metrics = {"loss": loss, "mse": loss}
-    return loss, metrics
-
-
-def loss_fn_pinn(params, model, x, y):
-    prediction, dt, theta, coeffs = model.apply(params, x)
-
-    MSE = mse(prediction, y)
-    Reg = mse(dt.squeeze(), (theta @ coeffs).squeeze())
-    loss = MSE + Reg
-    metrics = {"loss": loss, "mse": MSE, "reg": Reg, "coeff": coeffs}
-
-    return loss, metrics
-
-
-def loss_fn_pinn_stateful(params, state, model, x, y):
+def loss_fn_pinn(params, state, model, X, y, l=1.0):
     variables = {"params": params, **state}
     (prediction, dt, theta, coeffs), updated_state = model.apply(
-        variables, x, mutable=list(state.keys())
+        variables, X, mutable=list(state.keys())
     )
 
     MSE = mse(prediction, y)
-    Reg = mse(dt.squeeze(), (theta @ coeffs).squeeze())
-    loss = MSE + Reg
+    Reg = mse(dt, theta @ coeffs)
+    loss = MSE + l * Reg
     metrics = {"loss": loss, "mse": MSE, "reg": Reg, "coeff": coeffs}
 
     return loss, (updated_state, metrics, (prediction, dt, theta, coeffs))
 
 
-def loss_fn_pinn_multi(params, model, x, y):
-    prediction, dt, theta, coeffs = model.apply(params, x)
-    loss = mse(prediction, y) + mse(dt.squeeze().T, (theta @ coeffs).squeeze().T)
-    return loss
+def loss_fn_mse(params, state, model, X, y):
+    return loss_fn_pinn(params, state, model, X, y, l=0.0)

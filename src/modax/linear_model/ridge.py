@@ -11,5 +11,4 @@ def ridge(X, y, l):
     X_augmented = jnp.concatenate([X, l_normed], axis=0)
     y_augmented = jnp.concatenate([y, jnp.zeros((X.shape[1], 1))], axis=0)
 
-    coeffs = jnp.linalg.lstsq(X_augmented, y_augmented)[0]
-    return coeffs
+    return jnp.linalg.lstsq(X_augmented, y_augmented)

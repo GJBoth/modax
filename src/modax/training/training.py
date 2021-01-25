@@ -1,181 +1,88 @@
 from jax import jit, numpy as jnp
+from .utils import create_update
 
-from modax.training.convergence import Convergence
-from .sparsity_scheduler import mask_scheduler
+
+from .schedulers.convergence import Convergence
+from .schedulers.sparsity_scheduler import mask_scheduler
 from .logging import Logger
 from flax.core import freeze
-from ..utils import create_stateful_update
+
 from sklearn.model_selection import train_test_split
-from .convergence import Convergence
 
 
-def train(
-    model,
-    optimizer,
-    state,
-    loss_fn,
-    mask_update_fn,
-    X,
-    y,
-    max_epochs=1e4,
-    split=0.2,
-    rand_seed=42,
-):
-    # Making test / train
-    X_train, X_test, y_train, y_test = train_test_split(
-        X, y, test_size=split, random_state=rand_seed
-    )
-
-    # Creating update functions
-    update = create_stateful_update(loss_fn, model=model, x=X_train, y=y_train)
-    validation_metric = jit(
-        lambda opt, state: loss_fn(opt.target, state, model, X_test, y_test)[1][1]
-    )
+def train_max_iter(update_fn, optimizer, state, max_epochs):
+    """Run update_fn for max_epochs iteration.
+    """
     logger = Logger()
-    scheduler = mask_scheduler()
-    converged = Convergence()
-
     for epoch in jnp.arange(max_epochs):
-        (optimizer, state), train_metrics, output = update(optimizer, state)
-        prediction, dt, theta, coeffs = output
+        (optimizer, state), metrics, output = update_fn(optimizer, state)
 
         if epoch % 1000 == 0:
-            print(f"Loss step {epoch}: {train_metrics['loss']}")
+            print(f"Loss step {epoch}: {metrics['loss']}")
 
         if epoch % 25 == 0:
-            val_metrics = validation_metric(optimizer, state)
-            metrics = {
-                **train_metrics,
-                "val_mse": val_metrics["mse"],
-                "val_reg": val_metrics["reg"],
-            }
             logger.write(metrics, epoch)
-
-            apply_sparsity, optimizer = scheduler(val_metrics["mse"], epoch, optimizer)
-
-            if apply_sparsity:
-                mask = mask_update_fn(theta, dt)
-                state = freeze({"vars": {"MaskedLeastSquares_0": {"mask": mask}}})
-
-        if converged(epoch, coeffs):
-            mask = mask_update_fn(theta, dt)
-            print(f"Converged at epoch {epoch} with mask {mask[:, None]}.")
-            break
-
     logger.close()
     return optimizer, state
 
 
-def train_probabilistic(
-    model,
-    optimizer,
-    state,
-    loss_fn,
-    mask_update_fn,
-    X,
-    y,
-    max_epochs=1e4,
-    split=0.2,
-    rand_seed=42,
-    **loss_fn_kwargs,
+def train_early_stop(
+    update_fn, validation_fn, optimizer, state, max_epochs=1e4, **early_stop_args
 ):
-    # Making test / train
-    X_train, X_test, y_train, y_test = train_test_split(
-        X, y, test_size=split, random_state=rand_seed
-    )
-
-    # Creating update functions
-    update = create_stateful_update(
-        loss_fn, model=model, x=X_train, y=y_train, **loss_fn_kwargs
-    )
-    validation_metric = jit(
-        lambda opt, state: loss_fn(
-            opt.target, state, model, X_test, y_test, **loss_fn_kwargs
-        )[1][1]
-    )
+    """Run update_fn until given validation metric validation_fn increases.
+    """
     logger = Logger()
-    scheduler = mask_scheduler()
-    converged = Convergence()
-
+    check_early_stop = mask_scheduler(**early_stop_args)
     for epoch in jnp.arange(max_epochs):
-        (optimizer, state), train_metrics, output = update(optimizer, state)
-        prediction, dt, theta, coeffs = output
+        (optimizer, state), metrics, output = update_fn(optimizer, state)
 
         if epoch % 1000 == 0:
-            print(f"Loss step {epoch}: {train_metrics['loss']}")
+            print(f"Loss step {epoch}: {metrics['loss']}")
 
         if epoch % 25 == 0:
-            val_metrics = validation_metric(
-                optimizer, state
-            )  # this is not correct, val needs to calculated with forward val.
-            metrics = {
-                **train_metrics,
-                "val_p_mse": val_metrics["p_mse"],
-                "val_p_reg": val_metrics["p_reg"],
-                "val_mse": val_metrics["mse"],
-                "val_reg": val_metrics["reg"],
-            }
+            val_metric = validation_fn(optimizer, state)
+            stop_training, optimizer = check_early_stop(val_metric, epoch, optimizer)
+            metrics = {**metrics, "validation_metric": val_metric}
             logger.write(metrics, epoch)
-
-            apply_sparsity, optimizer = scheduler(
-                val_metrics["mse"], epoch, optimizer
-            )  # we need to find the minimum neg LL of the mse
-
-            if apply_sparsity:
-                mask = mask_update_fn(theta, dt)
-                state = freeze({"vars": {"MaskedLeastSquares_0": {"mask": mask}}})
-
-        if converged(epoch, coeffs):
-            mask = mask_update_fn(theta, dt)
-            print(f"Converged at epoch {epoch} with mask {mask[:, None]}.")
-            break
-
-    logger.close()
-    return optimizer, state
-
-
-def train_probabilistic_mse(
-    model, optimizer, state, loss_fn, X, y, max_epochs=1e4, split=0.2, rand_seed=42,
-):
-    # Making test / train
-    X_train, X_test, y_train, y_test = train_test_split(
-        X, y, test_size=split, random_state=rand_seed
-    )
-
-    # Creating update functions
-    update = create_stateful_update(loss_fn, model=model, x=X_train, y=y_train)
-    validation_metric = jit(
-        lambda opt, state: loss_fn(opt.target, state, model, X_test, y_test)[1][1]
-    )
-    logger = Logger()
-    scheduler = mask_scheduler()
-
-    for epoch in jnp.arange(max_epochs):
-        (optimizer, state), train_metrics, output = update(optimizer, state)
-        prediction, dt, theta, coeffs = output
-
-        if epoch % 1000 == 0:
-            print(f"Loss step {epoch}: {train_metrics['loss']}")
-
-        if epoch % 25 == 0:
-            val_metrics = validation_metric(
-                optimizer, state
-            )  # this is not correct, val needs to calculated with forward val.
-            metrics = {
-                **train_metrics,
-                "val_p_mse": val_metrics["p_mse"],
-                "val_p_reg": val_metrics["p_reg"],
-                "val_mse": val_metrics["mse"],
-                "val_reg": val_metrics["reg"],
-            }
-            logger.write(metrics, epoch)
-
-            apply_sparsity, optimizer = scheduler(
-                val_metrics["mse"], epoch, optimizer
-            )  # we need to find the minimum neg LL of the mse
-
-            if apply_sparsity:
+            if stop_training:
+                print("Converged.")
                 break
+    logger.close()
+    return optimizer, state
+
+
+def train_full(
+    update_fn,
+    mask_scheduler,
+    mask_update_fn,
+    optimizer,
+    state,
+    max_epochs=1e4,
+    **convergence_args,
+):
+
+    logger = Logger()
+    converged = Convergence(**convergence_args)
+    for epoch in jnp.arange(max_epochs):
+        (optimizer, state), metrics, output = update_fn(optimizer, state)
+        prediction, dt, theta, coeffs = output
+
+        if epoch % 1000 == 0:
+            print(f"Loss step {epoch}: {metrics['loss']}")
+
+        if epoch % 25 == 0:
+            logger.write(metrics, epoch)
+            apply_sparsity, optimizer = mask_scheduler(epoch, optimizer, state)
+
+            if apply_sparsity:
+                mask = mask_update_fn(theta, dt)
+                state = freeze({"vars": {"MaskedLeastSquares_0": {"mask": mask}}})
+
+        if converged(epoch, coeffs):
+            mask = mask_update_fn(theta, dt)
+            print(f"Converged at epoch {epoch} with mask {mask[:, None]}.")
+            break
 
     logger.close()
     return optimizer, state
+

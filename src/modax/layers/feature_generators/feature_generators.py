@@ -10,7 +10,9 @@ def library_forward(f, x):
     d3f = partial(vgrad_forward, d2f, input_idx=1)
 
     pred = jnp.expand_dims(f(x).T, axis=-1)
-    dt = jnp.expand_dims(vgrad_forward(f, x, input_idx=0).T, axis=-1)
+    dt = jnp.expand_dims(
+        vgrad_forward(f, x, input_idx=0).T, axis=-1
+    )  # TODO: Together with x as matrix jacobian
 
     # Polynomials: 1st axis is experiment, 2nd sample, 3rd dimension
     u = jnp.concatenate([jnp.ones_like(pred), pred, pred ** 2], axis=-1)
@@ -22,7 +24,7 @@ def library_forward(f, x):
             jnp.expand_dims(d3f(x).T, axis=-1),
         ],
         axis=-1,
-    )
+    )  # TODO: make this into scan?
 
     theta = (jnp.expand_dims(u, axis=-1) @ jnp.expand_dims(du, axis=-2)).reshape(
         u.shape[0], u.shape[1], 12

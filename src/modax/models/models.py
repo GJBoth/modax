@@ -1,20 +1,18 @@
 from typing import Sequence
 from ..layers.feature_generators import library_backward, library_forward
-from ..layers.regression import MaskedLeastSquares, LeastSquaresMT
+from ..layers.regression import LeastSquares, LeastSquaresMT
 from .networks import MLP, MultiTaskMLP
 from flax import linen as nn
 import jax.numpy as jnp
 
 
 class Deepmod(nn.Module):
-    """Simple feed-forward NN."""
-
     features: Sequence[int]
 
     @nn.compact
     def __call__(self, inputs):
         prediction, dt, theta = library_backward(MLP(self.features), inputs)
-        coeffs = MaskedLeastSquares()((dt, theta))
+        coeffs = LeastSquares()((dt, theta))
         return prediction, dt, theta, coeffs
 
 
@@ -35,13 +33,14 @@ class DeepmodMultiExp(nn.Module):
         return prediction, dt, theta, coeffs
 
 
-class DeepmodBayes(nn.Module):
+class DeepmodGrad(nn.Module):
     features: Sequence[int]
 
     @nn.compact
     def __call__(self, inputs):
         prediction, dt, theta = library_backward(MLP(self.features), inputs)
-        coeffs = MaskedLeastSquares()((dt, theta))
+        coeffs = LeastSquares()((dt, theta))
+        # TODO: make sure eveyrwhere has (X, y) not (y, X)
 
         z = self.param("likelihood_params", self.likelihood_params_init, prediction, dt)
         return prediction, dt, theta, coeffs, z
