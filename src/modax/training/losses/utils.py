@@ -29,5 +29,5 @@ def gamma_LL(x, alpha, beta):
 def precision(y, x, alpha, beta):
     # calculates precision parameter with a gamma prior
     n_samples = y.shape[0]
-    tau = (n_samples + 2 * (alpha - 1)) / (jnp.linalg.norm(y - x) ** 2 + 2 * beta)
+    tau = (n_samples + 2 * alpha) / (jnp.linalg.norm(y - x) ** 2 + 2 * beta)
     return tau
