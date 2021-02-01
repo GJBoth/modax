@@ -38,7 +38,7 @@ def bayesianregression(
         prior_params_init = jnp.stack([1.0, 1.0 / jnp.var(y)])
 
     # Calculating optimal prior
-    prior_params = fixed_point_solver(
+    prior_params, metrics = fixed_point_solver(
         update,
         (X, y, eigvals, hyper_prior_params),
         prior_params_init,
@@ -46,7 +46,7 @@ def bayesianregression(
         max_iter=max_iter,
     )
 
-    return prior_params
+    return prior_params, metrics
 
 
 @jit
