@@ -20,9 +20,7 @@ def bayesian_regression(
     eigen_vals_ = S ** 2
 
     if prior_init is None:
-        alpha = 1.0
-        beta = 1.0 / (jnp.var(y) + 1e-7)
-        prior_init = jnp.stack([alpha, beta])
+        prior_init = jnp.stack([1.0, 1.0 / (jnp.var(y) + 1e-7)])
 
     # Running
     prior_params, metrics = fixed_point_solver(
@@ -33,7 +31,9 @@ def bayesian_regression(
         max_iter=max_iter,
     )
 
-    log_LL, mn = evidence()
+    log_LL, mn = evidence(
+        X, y, prior_params, eigen_vals_, Vh, XT_y, alpha_prior, beta_prior
+    )
     return log_LL, mn, prior_params, metrics
 
 
@@ -42,7 +42,7 @@ def update(
     prior_params,
     X,
     y,
-    eigen_vals_,
+    eigen_vals,
     Vh,
     XT_y,
     alpha_prior=(1e-6, 1e-6),
@@ -53,9 +53,9 @@ def update(
 
     # Calculating coeffs
     coeffs = jnp.linalg.multi_dot(
-        [Vh.T, Vh / (eigen_vals_ + alpha / beta)[:, jnp.newaxis], XT_y]
+        [Vh.T, Vh / (eigen_vals + alpha / beta)[:, jnp.newaxis], XT_y]
     )
-    gamma_ = jnp.sum((beta * eigen_vals_) / (alpha + beta * eigen_vals_))
+    gamma_ = jnp.sum((beta * eigen_vals) / (alpha + beta * eigen_vals))
     rmse_ = jnp.sum((y - jnp.dot(X, coeffs)) ** 2)
 
     # %% Update alpha and lambda according to (MacKay, 1992)
@@ -65,24 +65,29 @@ def update(
 
 
 @jit
-def evidence(X, y, prior_params, hyper_prior_params=(0.0, 0.0)):
-    alpha, beta = prior_params[:-1], prior_params[-1]
-    a, b = hyper_prior_params
+def evidence(X, y, prior, eigen_vals, Vh, XT_y, alpha_prior, beta_prior):
+    # compute the log of the determinant of the posterior covariance.
+    # posterior covariance is given by
+    # sigma = (lambda_ * np.eye(n_features) + alpha_ * np.dot(X.T, X))^-1
+    alpha, beta = prior[:-1], prior[-1]
+    n_samples, n_features = X.shape
+    coeffs = jnp.linalg.multi_dot(
+        [Vh.T, Vh / (eigen_vals + alpha / beta)[:, jnp.newaxis], XT_y]
+    )
 
-    n_samples, n_terms = X.shape
-    A = alpha * jnp.eye(n_terms) + beta * X.T @ X
-    mn = beta * jnp.linalg.inv(A) @ X.T @ y  # get rid of inverse?
+    rmse = jnp.sum((y - jnp.dot(X, coeffs)) ** 2)
+    logdet_sigma = -jnp.sum(jnp.log(alpha + beta * eigen_vals))
 
-    E = beta * jnp.sum((y - X @ mn) ** 2) + alpha * jnp.sum(mn ** 2)
-    loss = 0.5 * (
-        n_terms * jnp.log(alpha)
+    score = alpha_prior[0] * jnp.log(alpha) - alpha_prior[1] * alpha
+    score += beta_prior[0] * jnp.log(beta) - beta_prior[1] * beta
+    score += 0.5 * (
+        n_features * jnp.log(alpha)
         + n_samples * jnp.log(beta)
-        - E
-        - jnp.linalg.slogdet(A)[1]
+        - beta * rmse
+        - alpha * jnp.sum(coeffs ** 2)
+        + logdet_sigma
         - n_samples * jnp.log(2 * jnp.pi)
     )
 
-    # following tipping, numerically stable if a, b -> 0 but doesn't have constant terms.
-    loss += a * jnp.log(beta) - b * beta
-    return loss.squeeze(), mn
+    return score, coeffs
 
