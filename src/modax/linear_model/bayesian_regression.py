@@ -89,5 +89,5 @@ def evidence(X, y, prior, eigen_vals, Vh, XT_y, alpha_prior, beta_prior):
         - n_samples * jnp.log(2 * jnp.pi)
     )
 
-    return score, coeffs
+    return score.squeeze(), coeffs
 

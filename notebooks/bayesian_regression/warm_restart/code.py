@@ -1,5 +1,5 @@
 from modax.training.losses.utils import precision, normal_LL
-from modax.linear_model.bayesian_regression import bayesianregression, evidence
+from modax.linear_model.bayesian_regression import bayesian_regression
 import jax.numpy as jnp
 import jax
 
@@ -31,13 +31,10 @@ def loss_fn_bayesian_ridge(params, state, model, X, y, warm_restart=True):
     else:
         prior_init = loss_state["prior_init"]
 
-    prior, fwd_metric = bayesianregression(
-        theta_normed,
-        dt,
-        prior_params_init=prior_init,
-        hyper_prior_params=hyper_prior_params,
+    p_reg, mn, prior, fwd_metric = bayesian_regression(
+        theta_normed, dt, prior_init=prior_init, beta_prior=hyper_prior_params,
     )
-    p_reg, mn = evidence(theta_normed, dt, prior, hyper_prior_params=hyper_prior_params)
+
     Reg = jnp.mean((dt - theta_normed @ mn) ** 2)
 
     loss_state["prior_init"] = prior
