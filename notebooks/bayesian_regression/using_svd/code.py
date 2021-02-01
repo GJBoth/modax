@@ -1,6 +1,6 @@
 # %% Imports
 from jax import jit, numpy as jnp
-from ..utils.forward_solver import fixed_point_solver
+from modax.utils.forward_solver import fixed_point_solver
 
 
 @jit
@@ -13,6 +13,32 @@ def bayesian_regression(
     tol=1e-5,
     max_iter=300,
 ):
+    def update(
+        prior_params,
+        X,
+        y,
+        eigen_vals_,
+        Vh,
+        XT_y,
+        alpha_prior=(1e-6, 1e-6),
+        beta_prior=(1e-6, 1e-6),
+    ):
+        alpha, beta = prior_params[:-1], prior_params[-1]
+        n_samples = X.shape[0]
+
+        # Calculating coeffs
+        coeffs = jnp.linalg.multi_dot(
+            [Vh.T, Vh / (eigen_vals_ + alpha / beta)[:, jnp.newaxis], XT_y]
+        )
+        gamma_ = jnp.sum((beta * eigen_vals_) / (alpha + beta * eigen_vals_))
+        rmse_ = jnp.sum((y - jnp.dot(X, coeffs)) ** 2)
+
+        # %% Update alpha and lambda according to (MacKay, 1992)
+        alpha = (gamma_ + 2 * alpha_prior[0]) / (
+            jnp.sum(coeffs ** 2) + 2 * alpha_prior[1]
+        )
+        beta = (n_samples - gamma_ + 2 * beta_prior[0]) / (rmse_ + 2 * beta_prior[1])
+        return jnp.stack([alpha, beta])
 
     # Prepping matrices
     XT_y = jnp.dot(X.T, y)
@@ -32,36 +58,7 @@ def bayesian_regression(
         tol=tol,
         max_iter=max_iter,
     )
-
-    log_LL, mn = evidence()
-    return log_LL, mn, prior_params, metrics
-
-
-@jit
-def update(
-    prior_params,
-    X,
-    y,
-    eigen_vals_,
-    Vh,
-    XT_y,
-    alpha_prior=(1e-6, 1e-6),
-    beta_prior=(1e-6, 1e-6),
-):
-    alpha, beta = prior_params[:-1], prior_params[-1]
-    n_samples = X.shape[0]
-
-    # Calculating coeffs
-    coeffs = jnp.linalg.multi_dot(
-        [Vh.T, Vh / (eigen_vals_ + alpha / beta)[:, jnp.newaxis], XT_y]
-    )
-    gamma_ = jnp.sum((beta * eigen_vals_) / (alpha + beta * eigen_vals_))
-    rmse_ = jnp.sum((y - jnp.dot(X, coeffs)) ** 2)
-
-    # %% Update alpha and lambda according to (MacKay, 1992)
-    alpha = (gamma_ + 2 * alpha_prior[0]) / (jnp.sum(coeffs ** 2) + 2 * alpha_prior[1])
-    beta = (n_samples - gamma_ + 2 * beta_prior[0]) / (rmse_ + 2 * beta_prior[1])
-    return jnp.stack([alpha, beta])
+    return prior_params, metrics
 
 
 @jit
