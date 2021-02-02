@@ -4,8 +4,12 @@ from jax import jit, numpy as jnp, lax
 from functools import partial
 
 
-@partial(jit, static_argnums=(0,))
-def fwd_solver(f, z_init, tol=1e-4, max_iter=300):
+@partial(jit, static_argnums=(0, 2))
+# / indicates the arguments before must be positional arguments and not keywerd
+def fwd_solver(f, z_init, n_features=None, tol=1e-4, max_iter=300):
+    # n_features calculates the norm over the first n_features of z.
+    # Useful for when you're iterating over a but check your convergence on b
+    # such as with SBL.
     def cond_fun(carry):
         _, _, (iteration, gap) = carry
         cond_norm = gap < tol
@@ -14,7 +18,7 @@ def fwd_solver(f, z_init, tol=1e-4, max_iter=300):
 
     def body_fun(carry):
         z, z_prev, (iteration, gap) = carry
-        gap = jnp.linalg.norm(z[:-1] - z_prev[:-1])
+        gap = jnp.linalg.norm(z[:n_features] - z_prev[:n_features])
         return f(z), z, (iteration + 1, gap)
 
     init_carry = (
@@ -22,23 +26,25 @@ def fwd_solver(f, z_init, tol=1e-4, max_iter=300):
         z_init,
         (0, 10 * tol),
     )
+    if n_features is None:
+        n_features = z_init.shape[0]
     z_star, _, metrics = lax.while_loop(cond_fun, body_fun, init_carry)
-    return z_star, metrics
+    return z_star[n_features:], metrics
 
 
 # Custom backprop function for iterative methods
 @partial(jax.custom_vjp, nondiff_argnums=(0,))
-@partial(jit, static_argnums=(0,))
-def fixed_point_solver(f, args, z_init, tol=1e-4, max_iter=300):
+@partial(jit, static_argnums=(0, 3))
+def fixed_point_solver(f, args, z_init, n_features=None, tol=1e-4, max_iter=300):
     z_star, metrics = fwd_solver(
-        lambda z: f(z, *args), z_init=z_init, tol=tol, max_iter=max_iter
+        lambda z: f(z, *args), z_init, n_features, tol=tol, max_iter=max_iter,
     )
     return z_star, metrics
 
 
-@partial(jit, static_argnums=(0,))
-def fixed_point_solver_fwd(f, args, z_init, tol, max_iter):
-    z_star, metrics = fixed_point_solver(f, args, z_init, tol, max_iter)
+@partial(jit, static_argnums=(0, 3))
+def fixed_point_solver_fwd(f, args, z_init, n_features, tol, max_iter):
+    z_star, metrics = fixed_point_solver(f, args, z_init, n_features, tol, max_iter)
     return (z_star, metrics), (z_star, tol, max_iter, args)
 
 
@@ -53,8 +59,8 @@ def fixed_point_solver_bwd(f, res, z_star_bar):
         fwd_solver(
             lambda u: vjp_z(u)[0] + z_star_bar,
             z_init=jnp.zeros_like(z_star),
-            tol=tol,
-            max_iter=max_iter,
+            tol=1e-5,
+            max_iter=500,
         )[0]
     )
     return (*res, None, None, None)  # None for init and to
