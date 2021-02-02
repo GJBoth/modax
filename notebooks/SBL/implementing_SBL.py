@@ -16,68 +16,53 @@ y = y.squeeze()
 reg = ARDRegression(fit_intercept=False, compute_score=True, threshold_lambda=1e6)
 reg.fit(X, y.squeeze())
 
-# %%
-
-n_samples, n_features = X.shape
-
-alpha_ = reg.alpha_  # 1.0 / (jnp.var(y) + 1e-7)
-lambda_ = reg.lambda_  # jnp.ones((n_features,))
-keep_lambda = reg.lambda_ < 1e4
-coef_ = reg.coef_
-
-lambda_prior = (1e-6, 1e-6)
-alpha_prior = (1e-6, 1e-6)
-
 
 # %%
-def update_sigma(X, alpha_, lambda_, keep_lambda):
-    X_keep = X[:, keep_lambda]
-    gram = jnp.dot(X_keep.T, X_keep)
-    eye = jnp.eye(gram.shape[0])
-    sigma_inv = lambda_[keep_lambda] * eye + alpha_ * gram
-    sigma_ = jnp.linalg.pinv(sigma_inv)
+@jit
+def update_sigma(gram, alpha_, lambda_):
+    sigma_inv = lambda_ * jnp.eye(gram.shape[0]) + alpha_ * gram
+    L_inv = jnp.linalg.pinv(jnp.linalg.cholesky(sigma_inv))
+    sigma_ = jnp.dot(L_inv.T, L_inv)
     return sigma_
 
 
-def update_coeff(X, y, coef_, alpha_, keep_lambda, sigma_):
-    coef_ = jax.ops.index_update(
-        coef_,
-        keep_lambda,
-        alpha_ * jnp.linalg.multi_dot([sigma_, X[:, keep_lambda].T, y]),
-    )
+@jit
+def update_coeff(XT_y, alpha_, sigma_):
+    coef_ = alpha_ * jnp.linalg.multi_dot([sigma_, XT_y])
     return coef_
 
 
-# %%
-alpha_ = 1.0 / (jnp.var(y) + 1e-7)
-lambda_ = jnp.ones((n_features,))
-keep_lambda = jnp.ones((n_features,), dtype=bool)
-coef_ = jnp.zeros_like(lambda_)
-
-lambda_prior = (1e-6, 1e-6)
-alpha_prior = (1e-6, 1e-6)
-threshold = 1e6
-
-for iter_ in jnp.arange(500):
-    sigma_ = update_sigma(X, alpha_, lambda_, keep_lambda)
-    coef_ = update_coeff(X, y, coef_, alpha_, keep_lambda, sigma_)
+@jit
+def update(alpha_, lambda_, X, y, gram, XT_y, alpha_prior, lambda_prior):
+    n_samples = X.shape[0]
+    sigma_ = update_sigma(gram, alpha_, lambda_)
+    coef_ = update_coeff(XT_y, alpha_, sigma_)
 
     # Update alpha and lambda
     rmse_ = jnp.sum((y - jnp.dot(X, coef_)) ** 2)
-    gamma_ = 1.0 - lambda_[keep_lambda] * jnp.diag(sigma_)
-    lambda_ = jax.ops.index_update(
-        lambda_,
-        keep_lambda,
-        (gamma_ + 2.0 * lambda_prior[0])
-        / ((coef_[keep_lambda]) ** 2 + 2.0 * lambda_prior[1]),
-    )
+    gamma_ = 1.0 - lambda_ * jnp.diag(sigma_)
+    lambda_ = (gamma_ + 2.0 * lambda_prior[0]) / ((coef_ ** 2 + 2.0 * lambda_prior[1]))
 
     alpha_ = (n_samples - gamma_.sum() + 2.0 * alpha_prior[0]) / (
         rmse_ + 2.0 * alpha_prior[1]
     )
 
-    # Prune the weights with a precision over a threshold
-    keep_lambda = lambda_ < threshold
-    coef_ = jax.ops.index_update(coef_, ~keep_lambda, 0)
+    return alpha_, lambda_
 
+
+# %%
+n_samples, n_features = X.shape
+alpha_ = 1.0 / (jnp.var(y) + 1e-7)
+lambda_ = jnp.ones((n_features,))
+
+lambda_prior = (1e-6, 1e-6)
+alpha_prior = (1e-6, 1e-6)
+
+gram = jnp.dot(X.T, X)
+XT_y = jnp.dot(X.T, y)
+
+for iter_ in jnp.arange(100):
+    alpha_, lambda_ = update(
+        alpha_, lambda_, X, y, gram, XT_y, alpha_prior, lambda_prior
+    )
 # %%
