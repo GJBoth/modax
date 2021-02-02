@@ -33,8 +33,11 @@ def SBL(
         tol=tol,
         max_iter=max_iter,
     )
+
     prior_params = prior_params[n_features:]  # removing coeffs
-    return prior_params, metrics
+    loss, mn = evidence(X, y, prior_params, gram, XT_y, alpha_prior, beta_prior)
+
+    return loss, mn, prior_params, metrics
 
 
 def update_sigma(gram, alpha, beta):
@@ -58,6 +61,8 @@ def update(prior, X, y, gram, XT_y, alpha_prior, beta_prior):
     # Update alpha and lambda
     rmse_ = jnp.sum((y - jnp.dot(X, coeffs)) ** 2)
     gamma_ = 1.0 - alpha * jnp.diag(sigma)
+
+    # TODO: Cap alpha with some threshold.
     alpha = (gamma_ + 2.0 * alpha_prior[0]) / ((coeffs ** 2 + 2.0 * alpha_prior[1]))
 
     beta = (n_samples - gamma_.sum() + 2.0 * beta_prior[0]) / (
@@ -65,3 +70,23 @@ def update(prior, X, y, gram, XT_y, alpha_prior, beta_prior):
     )
 
     return jnp.concatenate([coeffs.squeeze(), alpha, beta[jnp.newaxis]], axis=0)
+
+
+def evidence(X, y, prior, gram, XT_y, alpha_prior, beta_prior):
+    n_samples, n_features = X.shape
+    alpha, beta = prior[:-1], prior[-1]
+
+    sigma = update_sigma(gram, alpha, beta)
+    coeffs = update_coeff(XT_y, beta, sigma)
+    rmse_ = jnp.sum((y - jnp.dot(X, coeffs)) ** 2)
+
+    score = jnp.sum(alpha_prior[0] * jnp.log(alpha) - alpha_prior[1] * alpha)
+    score += beta_prior[0] * jnp.log(beta) - beta_prior[1] * beta
+    score += 0.5 * (
+        jnp.linalg.slogdet(sigma)[1]
+        + n_samples * jnp.log(beta)
+        + jnp.sum(jnp.log(alpha))
+    )
+    score -= 0.5 * (beta * rmse_ + jnp.sum(alpha * coeffs ** 2))
+
+    return score.squeeze(), coeffs
