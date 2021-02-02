@@ -19,18 +19,26 @@ def bayesian_regression(
     _, S, Vh = jnp.linalg.svd(X, full_matrices=False)
     eigen_vals_ = S ** 2
 
+    n_samples, n_features = X.shape
+
     if prior_init is None:
-        prior_init = jnp.stack([1.0, 1.0 / (jnp.var(y) + 1e-7)])
+        prior_init = jnp.concatenate(
+            [jnp.ones((n_features + 1)), (1.0 / (jnp.var(y) + 1e-7))[jnp.newaxis]],
+            axis=0,
+        )
+    norm_weight = jnp.concatenate((jnp.ones((n_features,)), jnp.zeros((2,))), axis=0)
 
     # Running
     prior_params, metrics = fixed_point_solver(
         update,
         (X, y, eigen_vals_, Vh, XT_y, alpha_prior, beta_prior),
         prior_init,
+        norm_weight,
         tol=tol,
         max_iter=max_iter,
     )
 
+    prior_params = prior_params[n_features:]  # removing coeffs
     log_LL, mn = evidence(
         X, y, prior_params, eigen_vals_, Vh, XT_y, alpha_prior, beta_prior
     )
@@ -39,7 +47,7 @@ def bayesian_regression(
 
 @jit
 def update(
-    prior_params,
+    prior,
     X,
     y,
     eigen_vals,
@@ -48,9 +56,9 @@ def update(
     alpha_prior=(1e-6, 1e-6),
     beta_prior=(1e-6, 1e-6),
 ):
-    alpha, beta = prior_params[:-1], prior_params[-1]
-    n_samples = X.shape[0]
 
+    n_samples, n_features = X.shape
+    alpha, beta = prior[n_features:-1], prior[-1]
     # Calculating coeffs
     coeffs = jnp.linalg.multi_dot(
         [Vh.T, Vh / (eigen_vals + alpha / beta)[:, jnp.newaxis], XT_y]
@@ -61,7 +69,9 @@ def update(
     # %% Update alpha and lambda according to (MacKay, 1992)
     alpha = (gamma_ + 2 * alpha_prior[0]) / (jnp.sum(coeffs ** 2) + 2 * alpha_prior[1])
     beta = (n_samples - gamma_ + 2 * beta_prior[0]) / (rmse_ + 2 * beta_prior[1])
-    return jnp.stack([alpha, beta])
+    return jnp.concatenate(
+        [coeffs.squeeze(), alpha[jnp.newaxis], beta[jnp.newaxis]], axis=0
+    )
 
 
 @jit

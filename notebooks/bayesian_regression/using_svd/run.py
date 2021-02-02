@@ -7,7 +7,10 @@ from sklearn.linear_model import BayesianRidge
 
 
 # %% Prepping data
-data = jnp.load("test_data.npy", allow_pickle=True).item()
+data = jnp.load(
+    "/home/gert-jan/Documents/modax/notebooks/bayesian_regression/using_svd/test_data.npy",
+    allow_pickle=True,
+).item()
 y, X = data["y"], data["X"]
 
 X_normed = X / jnp.linalg.norm(X, axis=0)
