@@ -5,32 +5,9 @@ from ..linear_model import ridge
 
 
 class LeastSquares(nn.Module):
-    def __call__(self, inputs):
-        theta, dt = inputs
-        coeffs = self.fit(theta, dt)
-
-        return coeffs
-
-    def fit(self, X, y):
-        return jnp.linalg.lstsq(X, y)[0]
-
-
-class LeastSquaresMT(nn.Module):
     @nn.compact
     def __call__(self, inputs):
-        theta, dt = inputs
-        coeffs = self.fit(theta, dt)
-
-        return coeffs
-
-    def fit(self, X, y):
-        return jax.vmap(jnp.linalg.lstsq, in_axes=(0, 0), out_axes=0)(X, y)[0]
-
-
-class MaskedLeastSquares(nn.Module):
-    @nn.compact
-    def __call__(self, inputs):
-        y, X = inputs
+        y, X = inputs  # TODO: Write as ridge with l=0?
         mask = self.variable(
             "vars",
             "mask",
@@ -46,6 +23,9 @@ class MaskedLeastSquares(nn.Module):
         )  # extra multiplication to compensate numerical errors
 
 
+# LeastSquares = partialmethod(Ridge, l=0.0)
+
+
 class Ridge(nn.Module):
     l: float = 1e-7
 
@@ -53,14 +33,26 @@ class Ridge(nn.Module):
     def __call__(self, inputs):
         y, X = inputs
         mask = self.variable(
+            "vars",
             "mask",
-            "active terms",
             lambda n_terms: jnp.ones((n_terms,), dtype=bool),
             X.shape[1],
         )
+        coeffs = ridge(X * mask.value, y, l=self.l)[0]
 
-        coeffs = ridge(X * mask.value, y, l=self.l)
+        # extra multiplication to compensate numerical errors
+        return coeffs * mask.value[:, None]
 
-        return (
-            coeffs * mask.value[:, None]
-        )  # extra multiplication to compensate numerical errors
+
+class LeastSquaresMT(nn.Module):
+    @nn.compact
+    def __call__(self, inputs):
+        theta, dt = inputs
+        coeffs = self.fit(theta, dt)
+
+        return coeffs
+
+    def fit(self, X, y):
+        return jax.vmap(jnp.linalg.lstsq, in_axes=(0, 0), out_axes=0)(X, y)[0]
+        # TODO: Merge with leastsquares?
+
