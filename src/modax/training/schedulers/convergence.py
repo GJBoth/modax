@@ -5,8 +5,8 @@ from dataclasses import dataclass
 
 @dataclass
 class Convergence:
-    patience = 200
-    delta = 1e-3
+    patience: int = 200
+    delta: float = 1e-3
     start_iteration = None
     start_norm = None
 

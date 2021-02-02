@@ -1,13 +1,9 @@
 from jax import jit, numpy as jnp
-from .utils import create_update
-
 
 from .schedulers.convergence import Convergence
 from .schedulers.sparsity_scheduler import mask_scheduler
 from .logging import Logger
 from flax.core import freeze
-
-from sklearn.model_selection import train_test_split
 
 
 def train_max_iter(update_fn, optimizer, state, max_epochs):
@@ -53,16 +49,19 @@ def train_early_stop(
 
 def train_full(
     update_fn,
-    mask_scheduler,
+    validation_fn,
     mask_update_fn,
     optimizer,
     state,
     max_epochs=1e4,
-    **convergence_args,
+    convergence_args={"patience": 200, "delta": 1e-3},
+    mask_update_args={"patience": 500, "delta": 1e-5, "periodicity": 200},
 ):
 
     logger = Logger()
     converged = Convergence(**convergence_args)
+    update_mask = mask_scheduler(**mask_update_args)
+
     for epoch in jnp.arange(max_epochs):
         (optimizer, state), metrics, output = update_fn(optimizer, state)
         prediction, dt, theta, coeffs = output
@@ -71,12 +70,14 @@ def train_full(
             print(f"Loss step {epoch}: {metrics['loss']}")
 
         if epoch % 25 == 0:
+            val_metric = validation_fn(optimizer, state)
+            metrics = {**metrics, "validation_metric": val_metric}
             logger.write(metrics, epoch)
-            apply_sparsity, optimizer = mask_scheduler(epoch, optimizer, state)
+            apply_sparsity, optimizer = update_mask(val_metric, epoch, optimizer)
 
             if apply_sparsity:
                 mask = mask_update_fn(theta, dt)
-                state = freeze({"vars": {"MaskedLeastSquares_0": {"mask": mask}}})
+                state = freeze({"vars": {"LeastSquares_0": {"mask": mask}}})
 
         if converged(epoch, coeffs):
             mask = mask_update_fn(theta, dt)
