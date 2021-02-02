@@ -1,6 +1,7 @@
 # %% Imports
 import jax
 from jax import jit, numpy as jnp
+from modax.utils.forward_solver import fixed_point_solver
 
 from sklearn.linear_model import ARDRegression
 
@@ -13,7 +14,7 @@ y, X = data["y"], data["X"]
 X = X / jnp.linalg.norm(X, axis=0)
 y = y.squeeze()
 # %% Baseline
-reg = ARDRegression(fit_intercept=False, compute_score=True, threshold_lambda=1e6)
+reg = ARDRegression(fit_intercept=False, compute_score=True, threshold_lambda=1e8)
 reg.fit(X, y.squeeze())
 
 
@@ -33,7 +34,8 @@ def update_coeff(XT_y, alpha_, sigma_):
 
 
 @jit
-def update(alpha_, lambda_, X, y, gram, XT_y, alpha_prior, lambda_prior):
+def update(prior, X, y, gram, XT_y, alpha_prior, lambda_prior):
+    lambda_, alpha_ = prior[:-1], prior[-1]
     n_samples = X.shape[0]
     sigma_ = update_sigma(gram, alpha_, lambda_)
     coef_ = update_coeff(XT_y, alpha_, sigma_)
@@ -47,22 +49,28 @@ def update(alpha_, lambda_, X, y, gram, XT_y, alpha_prior, lambda_prior):
         rmse_ + 2.0 * alpha_prior[1]
     )
 
-    return alpha_, lambda_
+    return jnp.concatenate([lambda_, alpha_[jnp.newaxis]], axis=0)
 
 
 # %%
 n_samples, n_features = X.shape
-alpha_ = 1.0 / (jnp.var(y) + 1e-7)
-lambda_ = jnp.ones((n_features,))
 
+prior = jnp.concatenate(
+    [jnp.ones((n_features,)), (1.0 / (jnp.var(y) + 1e-7))[jnp.newaxis]], axis=0
+)
 lambda_prior = (1e-6, 1e-6)
 alpha_prior = (1e-6, 1e-6)
 
 gram = jnp.dot(X.T, X)
 XT_y = jnp.dot(X.T, y)
+# %%
+prior, metric = fixed_point_solver(
+    update,
+    (X, y, gram, XT_y, alpha_prior, lambda_prior),
+    prior,
+    tol=1e-4,
+    max_iter=5000,
+)
 
-for iter_ in jnp.arange(100):
-    alpha_, lambda_ = update(
-        alpha_, lambda_, X, y, gram, XT_y, alpha_prior, lambda_prior
-    )
+
 # %%
