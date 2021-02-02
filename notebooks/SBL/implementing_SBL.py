@@ -20,5 +20,6 @@ reg.fit(X, y.squeeze())
 
 # %%
 prior, metric = SBL(X, y)
-
+print(prior, metric)
+print(reg.lambda_, reg.alpha_)
 # %%
