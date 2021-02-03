@@ -10,6 +10,9 @@ from flax import optim
 from modax.training.losses.bayesian_regression import loss_fn_bayesian_ridge
 from modax.training import train_max_iter
 
+from sklearn.linear_model import BayesianRidge
+from modax.linear_model.bayesian_regression import bayesian_regression
+
 # %% Making data; Burgers or KdV
 dataset = "kdv"
 key = random.PRNGKey(42)
@@ -48,4 +51,52 @@ optimizer = optimizer.create(params)
 state = (state, {"prior_init": None})  # adding prior to state
 update_fn = create_update(loss_fn_bayesian_ridge, (model, X, y, True))
 
-optimizer, state = train_max_iter(update_fn, optimizer, state, 10000)
+# %%
+optimizer, state = train_max_iter(update_fn, optimizer, state, 150)
+
+# %%
+model_state, loss_state = state
+variables = {"params": optimizer.target, **model_state}
+(prediction, dt, theta, coeffs), updated_model_state = model.apply(
+    variables, X, mutable=list(model_state.keys())
+)
+
+theta_normed = theta / jnp.linalg.norm(theta, axis=0)
+
+# %%
+reg = BayesianRidge(fit_intercept=False, compute_score=True, tol=1e-3)
+reg.fit(theta_normed, dt)
+
+# %%
+loss, mn, prior, metrics = bayesian_regression(theta_normed, dt, tol=1e-3)
+# %%
+
+# %%
+print(reg.scores_[-1], loss)
+# %%
+print(mn, reg.coef_[:, None])
+# %%
+print(reg.lambda_, prior[0])
+print(reg.alpha_, prior[-1])
+# %%
+print(metrics)
+# %%
+n_samples, n_features = theta.shape
+tau = 1 / jnp.mean((y - prediction) ** 2)
+hyper_prior = (n_samples / 2, n_samples / 2 * 1 / tau)
+loss, mn, prior, metrics = bayesian_regression(
+    theta_normed, dt, tol=1e-3, beta_prior=hyper_prior
+)
+
+# %%
+
+# %%
+reg = BayesianRidge(
+    fit_intercept=False,
+    compute_score=True,
+    tol=1e-3 * tau,
+    alpha_1=hyper_prior[0],
+    alpha_2=hyper_prior[1],
+)
+reg.fit(theta_normed, dt)
+# %%

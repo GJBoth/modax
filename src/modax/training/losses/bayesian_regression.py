@@ -32,7 +32,12 @@ def loss_fn_bayesian_ridge(params, state, model, X, y, warm_restart=True):
         prior_init = loss_state["prior_init"]
 
     p_reg, mn, prior, fwd_metric = bayesian_regression(
-        theta_normed, dt, prior_init=prior_init, beta_prior=hyper_prior_params, tol=1e-3
+        theta_normed,
+        dt,
+        prior_init=prior_init,
+        beta_prior=hyper_prior_params,
+        tol=1e-3 * jax.lax.stop_gradient(tau),
+        max_iter=300,
     )
 
     Reg = jnp.mean((dt - theta_normed @ mn) ** 2)
