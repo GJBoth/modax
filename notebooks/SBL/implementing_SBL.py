@@ -18,8 +18,12 @@ reg = ARDRegression(fit_intercept=False, compute_score=True, threshold_lambda=1e
 reg.fit(X, y.squeeze())
 
 
-# %%
-prior, metric = SBL(X, y)
-print(prior, metric)
-print(reg.lambda_, reg.alpha_)
-# %%
+# %% Cold restart
+loss, mn, prior, metric = SBL(X, y)
+print(loss, mn, prior, metric)
+
+# %% Warm restart
+prior_init = prior
+loss, mn, prior, metric = SBL(X, y, prior_init)
+print(loss, mn, prior, metric)
+print(reg.scores_[-1], reg.coef_, reg.lambda_, reg.alpha_)
