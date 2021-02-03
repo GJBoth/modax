@@ -23,9 +23,11 @@ def bayesian_regression(
 
     if prior_init is None:
         prior_init = jnp.concatenate(
-            [jnp.ones((n_features + 1)), (1.0 / (jnp.var(y) + 1e-7))[jnp.newaxis]],
-            axis=0,
+            [jnp.ones((1,)), (1.0 / (jnp.var(y) + 1e-7))[jnp.newaxis]], axis=0,
         )
+
+    # add in zeros for the coeffs
+    prior_init = jnp.concatenate([jnp.zeros((n_features,)), prior_init], axis=0)
     norm_weight = jnp.concatenate((jnp.ones((n_features,)), jnp.zeros((2,))), axis=0)
 
     # Running

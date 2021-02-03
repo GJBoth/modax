@@ -18,9 +18,14 @@ X_normed = X / jnp.linalg.norm(X, axis=0)
 # %% Baseline
 reg = BayesianRidge(fit_intercept=False, compute_score=True)
 reg.fit(X_normed, y.squeeze())
+print(reg.scores_[0], reg.coef_, reg.lambda_, reg.alpha_)
+# %% No warm restart
 
-# %%
+loss, coeffs, prior, metrics = bayesian_regression(X_normed, y)
+print(loss, coeffs, prior, metrics)
+# %% Warm restart
 
+prior_init = prior
+loss, coeffs, prior, metrics = bayesian_regression(X_normed, y, prior_init)
+print(loss, coeffs, prior, metrics)
 
-bayesian_regression(X_normed, y)
-# %%
