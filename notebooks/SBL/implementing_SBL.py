@@ -1,6 +1,7 @@
 # %% Imports
 import jax
 from jax import jit, numpy as jnp
+from jax.api import value_and_grad
 from modax.linear_model.SBL import SBL
 
 from sklearn.linear_model import ARDRegression
@@ -27,3 +28,10 @@ prior_init = prior
 loss, mn, prior, metric = SBL(X, y, prior_init)
 print(loss, mn, prior, metric)
 print(reg.scores_[-1], reg.coef_, reg.lambda_, reg.alpha_)
+
+# %% Grad
+print(jax.grad(lambda x: SBL(x, y, prior_init)[0])(X))
+
+# %%
+grad_fn = jax.value_and_grad(lambda x, y: SBL(x, y, prior_init)[0])
+# %%
