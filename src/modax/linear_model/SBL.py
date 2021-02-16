@@ -66,7 +66,7 @@ def update(prior, X, y, gram, XT_y, alpha_prior, beta_prior):
         rmse_ + 2.0 * beta_prior[1]
     )
 
-    return jnp.concatenate([alpha.squeeze(), beta[jnp.newaxis]], axis=0)
+    return jnp.concatenate([alpha, beta[jnp.newaxis]], axis=0)
 
 
 def evidence(X, y, prior, gram, XT_y, alpha_prior, beta_prior):
@@ -84,6 +84,6 @@ def evidence(X, y, prior, gram, XT_y, alpha_prior, beta_prior):
         + n_samples * jnp.log(beta)
         + jnp.sum(jnp.log(alpha))
     )
-    score -= 0.5 * (beta * rmse_ + jnp.sum(alpha * coeffs ** 2))
+    score -= 0.5 * (beta * rmse_ + jnp.sum(alpha * coeffs.squeeze() ** 2))
 
     return score.squeeze(), coeffs
