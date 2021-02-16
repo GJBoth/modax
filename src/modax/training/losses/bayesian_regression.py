@@ -36,7 +36,7 @@ def loss_fn_bayesian_ridge(params, state, model, X, y, warm_restart=True):
         dt,
         prior_init=prior_init,
         beta_prior=hyper_prior_params,
-        tol=1e-3 * jax.lax.stop_gradient(tau),
+        tol=1e-3,  # * jax.lax.stop_gradient(tau),
         max_iter=300,
     )
 

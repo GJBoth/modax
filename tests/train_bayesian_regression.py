@@ -48,4 +48,4 @@ optimizer = optimizer.create(params)
 state = (state, {"prior_init": None})  # adding prior to state
 update_fn = create_update(loss_fn_bayesian_ridge, (model, X, y, True))
 
-optimizer, state = train_max_iter(update_fn, optimizer, state, 10000)
+optimizer, state = train_max_iter(update_fn, optimizer, state, 5000)
