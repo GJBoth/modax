@@ -13,15 +13,12 @@ def SBL(
     max_iter=300,
 ):
     n_samples, n_features = X.shape
-    norm_weight = jnp.concatenate(
-        (jnp.ones((n_features,)), jnp.zeros((n_features + 1,))), axis=0
-    )
+    norm_weight = jnp.concatenate((jnp.ones((n_features,)), jnp.zeros((1,))), axis=0)
     if prior_init is None:
         prior_init = jnp.concatenate(
             [jnp.ones((n_features,)), (1.0 / (jnp.var(y) + 1e-7))[jnp.newaxis]], axis=0
         )
     # adding zeros to z for coeffs
-    prior_init = jnp.concatenate([jnp.zeros((n_features,)), prior_init], axis=0)
     gram = jnp.dot(X.T, X)
     XT_y = jnp.dot(X.T, y)
 
@@ -34,7 +31,6 @@ def SBL(
         max_iter=max_iter,
     )
 
-    prior_params = prior_params[n_features:]  # removing coeffs
     loss, mn = evidence(X, y, prior_params, gram, XT_y, alpha_prior, beta_prior)
 
     return loss, mn, prior_params, metrics
@@ -54,7 +50,7 @@ def update_coeff(XT_y, beta, sigma_):
 
 def update(prior, X, y, gram, XT_y, alpha_prior, beta_prior):
     n_samples, n_features = X.shape
-    alpha, beta = prior[n_features:-1], prior[-1]
+    alpha, beta = prior[:-1], prior[-1]
     sigma = update_sigma(gram, alpha, beta)
     coeffs = update_coeff(XT_y, beta, sigma)
 
@@ -63,13 +59,14 @@ def update(prior, X, y, gram, XT_y, alpha_prior, beta_prior):
     gamma_ = 1.0 - alpha * jnp.diag(sigma)
 
     # TODO: Cap alpha with some threshold.
-    alpha = (gamma_ + 2.0 * alpha_prior[0]) / ((coeffs ** 2 + 2.0 * alpha_prior[1]))
-
+    alpha = (gamma_ + 2.0 * alpha_prior[0]) / (
+        (coeffs.squeeze() ** 2 + 2.0 * alpha_prior[1])
+    )
     beta = (n_samples - gamma_.sum() + 2.0 * beta_prior[0]) / (
         rmse_ + 2.0 * beta_prior[1]
     )
 
-    return jnp.concatenate([coeffs.squeeze(), alpha, beta[jnp.newaxis]], axis=0)
+    return jnp.concatenate([alpha.squeeze(), beta[jnp.newaxis]], axis=0)
 
 
 def evidence(X, y, prior, gram, XT_y, alpha_prior, beta_prior):
