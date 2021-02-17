@@ -13,7 +13,7 @@ def train_max_iter(update_fn, optimizer, state, max_epochs):
     for epoch in jnp.arange(max_epochs):
         (optimizer, state), metrics, output = update_fn(optimizer, state)
 
-        if epoch % 1 == 0:
+        if epoch % 100 == 0:
             print(f"Loss step {epoch}: {metrics['loss']}")
 
         if epoch % 1 == 0:

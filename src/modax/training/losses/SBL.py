@@ -39,7 +39,7 @@ def loss_fn_SBL(params, state, model, X, y, warm_restart=True):
         prior_init=prior_init,
         beta_prior=hyper_prior_params,
         tol=1e-3,
-        max_iter=1000,
+        max_iter=300,
     )
 
     Reg = jnp.mean((dt - theta_normed @ mn) ** 2)
