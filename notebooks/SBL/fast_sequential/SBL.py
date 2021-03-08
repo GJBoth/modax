@@ -75,6 +75,8 @@ class RegressionARD:
         XY = np.dot(X.T, y)
         XX = np.dot(X.T, X)
         XXd = np.diag(XX)
+        gram = XX
+        XT_y = XY
 
         #  initialise precision of noise & and coefficients
         beta = 1.0 / (np.var(y) + 1e-6)
@@ -91,7 +93,7 @@ class RegressionARD:
             XYa = XY[active]
 
             # mean & covariance of posterior distribution
-            Mn, Ri = self._posterior_dist(alpha[active], beta, XXa, XYa)
+            Mn, Ri = self.posterior_dist(alpha, beta, gram, XT_y)
             Sdiag = np.sum(Ri ** 2, 0)
 
             # compute quality & sparsity parameters
@@ -110,7 +112,7 @@ class RegressionARD:
         # after last update of alpha & beta update parameters
         # of posterior distribution
         XXa, XYa, Aa = XX[active, :][:, active], XY[active], alpha[active]
-        Mn, Sn = self._posterior_dist(Aa, beta, XXa, XYa, True)
+        Mn, Sn = self.posterior_dist(Aa, beta, XXa, XYa, True)
         self.coef_ = np.zeros(n_features)
         self.coef_[active] = Mn
         self.sigma_ = Sn
@@ -119,23 +121,24 @@ class RegressionARD:
         self.alpha_ = beta
         return self
 
-    def _posterior_dist(self, alpha, beta, XX, XY, full_covar=False):
+    def posterior_dist(self, alpha, beta, gram, XT_y, full_covar=False):
         """
         Calculates mean and covariance matrix of posterior distribution
         of coefficients.
         """
         # compute precision matrix for active features
-        Sinv = beta * XX
-        np.fill_diagonal(Sinv, np.diag(Sinv) + alpha)
+        active = ~np.isinf(alpha)
+        Sinv = beta * gram[active, :][:, active]
+        np.fill_diagonal(Sinv, np.diag(Sinv) + alpha[active])
 
         # find posterior mean : R*R.T*mean = beta*X.T*Y
         # solve(R*z = beta*X.T*Y) => find z => solve(R.T*mean = z) => find mean
         R = np.linalg.cholesky(Sinv)
-        Z = solve_triangular(R, beta * XY, check_finite=False, lower=True)
+        Z = solve_triangular(R, beta * XT_y[active], check_finite=False, lower=True)
         Mn = solve_triangular(R.T, Z, check_finite=False, lower=False)
 
         # invert lower triangular matrix from cholesky decomposition
-        Ri = solve_triangular(R, np.eye(alpha.shape[0]), check_finite=False, lower=True)
+        Ri = solve_triangular(R, np.eye(np.sum(active)), check_finite=False, lower=True)
         if full_covar:
             Sn = np.dot(Ri.T, Ri)
             return Mn, Sn
