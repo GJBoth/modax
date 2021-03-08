@@ -86,23 +86,6 @@ class RegressionARD(LinearModel, RegressorMixin):
         self.verbose = verbose
 
     def fit(self, X, y):
-        """
-        Fits ARD Regression with Sequential Sparse Bayes Algorithm.
-        
-        Parameters
-        -----------
-        X: {array-like, sparse matrix} of size (n_samples, n_features)
-           Training data, matrix of explanatory variables
-        
-        y: array-like of size [n_samples, n_features] 
-           Target values
-           
-        Returns
-        -------
-        self : object
-            Returns self.
-        """
-
         n_samples, n_features = X.shape
 
         #  precompute X'*Y , X'*X for faster iterations & allocate memory for
@@ -112,15 +95,8 @@ class RegressionARD(LinearModel, RegressorMixin):
         XXd = np.diag(XX)
 
         #  initialise precision of noise & and coefficients
-        var_y = np.var(y)
-
-        # check that variance is non zero !!!
-        if var_y == 0:
-            beta = 1e-2
-        else:
-            beta = 1.0 / np.var(y)
-
-        A = np.PINF * np.ones(n_features)
+        beta = 1.0 / (np.var(y) + 1e-6)
+        A = np.inf * np.ones(n_features)
         active = np.zeros(n_features, dtype=np.bool)
 
         # in case of almost perfect multicollinearity between some features
@@ -133,7 +109,7 @@ class RegressionARD(LinearModel, RegressorMixin):
             proj = XY ** 2 / XXd
             start = np.argmax(proj)
             active[start] = True
-            A[start] = XXd[start] / (proj[start] - var_y)
+            A[start] = XXd[start] / (proj[start] - 1 / beta)
 
         warning_flag = 0
         for i in range(self.n_iter):
