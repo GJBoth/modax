@@ -1,5 +1,4 @@
 import numpy as np
-from numpy.core.function_base import add_newdoc
 from scipy.linalg import solve_triangular
 from sklearn.utils import check_X_y
 
@@ -17,23 +16,20 @@ def update_precisions(Q, S, q, s, alpha, tol):
 
     # compute change in log marginal likelihood
     L_add = (Q ** 2 - S) / S + np.log(S / Q ** 2)
-    L_add[~np.isinf(alpha)] = 0.0
-
     L_update = Q ** 2 / (S + 1 / delta_alpha) - np.log(1 + S * delta_alpha)
-    L_update[np.isinf(alpha)] = 0.0
-
     L_delete = Q ** 2 / (S - alpha) - np.log(1 - S / alpha)
-    L_delete[np.isinf(alpha)] = 0.0
 
-    deltaL = np.stack([L_add, L_update, L_delete], axis=-1)
-    feature_idx, op = np.unravel_index(np.argmax(deltaL), deltaL.shape)
+    # Adding and filtering
+    delta_L = np.stack([L_add, L_update, L_delete], axis=-1)
+    delta_L[~np.isinf(alpha), 0] = 0.0
+    delta_L[np.isinf(alpha), 1:] = 0.0
+
+    feature_idx, op = np.unravel_index(np.argmax(delta_L), delta_L.shape)
 
     # Updating alpha
-    if op == 0:
+    if (op == 0) or (op == 1):
         alpha[feature_idx] = alphanew[feature_idx]
-    elif op == 1:
-        alpha[feature_idx] = alphanew[feature_idx]
-    elif op == 2:
+    else:
         alpha[feature_idx] = np.inf
 
     # Checking convergence
@@ -48,7 +44,7 @@ def update_precisions(Q, S, q, s, alpha, tol):
     return alpha, converged
 
 
-class RegressionARD:
+class SBL:
     def __init__(self, n_iter=300, tol=1e-3):
         self.n_iter = n_iter
         self.tol = tol
@@ -65,17 +61,13 @@ class RegressionARD:
 
         # after last update of alpha & beta update parameters
         # of posterior distribution
-        active = ~np.isinf(alpha)
         n_samples, n_features = X.shape
         Mn, Ri = self.posterior_dist(alpha, beta, gram, XT_y)
         Sn = np.dot(Ri.T, Ri)
-        self.coef_ = np.zeros(n_features)
-        self.coef_[active] = Mn
-        self.sigma_ = Sn
-        self.active_ = active
-        self.lambda_ = alpha
-        self.alpha_ = beta
-        return self
+        active = ~np.isinf(alpha)
+        coeffs = np.zeros(n_features)
+        coeffs[active] = Mn
+        return alpha, beta, coeffs
 
     def posterior_dist(self, alpha, beta, gram, XT_y):
         """
