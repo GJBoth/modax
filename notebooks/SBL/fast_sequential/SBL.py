@@ -1,5 +1,6 @@
 import numpy as np
 from scipy.linalg import solve_triangular
+from sklearn.utils import check_X_y
 
 
 def update_precisions(Q, S, q, s, A, active, tol, n_samples):
@@ -71,9 +72,8 @@ class RegressionARD:
 
     def fit(self, X, y):
         n_samples, n_features = X.shape
+        X, y = check_X_y(X, y, dtype=np.float64)  # apparently need 64 bits for log.
 
-        #  precompute X'*Y , X'*X for faster iterations & allocate memory for
-        #  sparsity & quality vectors
         XY = np.dot(X.T, y)
         XX = np.dot(X.T, X)
         XXd = np.diag(XX)
