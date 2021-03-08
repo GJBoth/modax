@@ -97,7 +97,7 @@ class RegressionARD:
             Sdiag = np.sum(Ri ** 2, 0)
 
             # compute quality & sparsity parameters
-            s, q, S, Q = self._sparsity_quality(XX, XXd, XY, XYa, alpha, Ri, beta)
+            s, q, S, Q = self.sparsity_quality(alpha, beta, gram, XT_y, Ri)
 
             # update precision parameter for noise distribution
             rss = np.sum((y - np.dot(X[:, active], Mn)) ** 2)
@@ -145,25 +145,14 @@ class RegressionARD:
         else:
             return Mn, Ri
 
-    def _sparsity_quality(self, XX, XXd, XY, XYa, alpha, Ri, beta):
-        """
-        Calculates sparsity and quality parameters for each feature
-        
-        Theoretical Note:
-        -----------------
-        Here we used Woodbury Identity for inverting covariance matrix
-        of target distribution 
-        C    = 1/beta + 1/alpha * X' * X
-        C^-1 = beta - beta^2 * X * Sn * X'
-        """
-
+    def sparsity_quality(self, alpha, beta, gram, XT_y, Ri):
         # here Ri is inverse of lower triangular matrix obtained from cholesky decomp
         active = ~np.isinf(alpha)
-        Aa = alpha[active]
-        xxr = np.dot(XX[:, active], Ri.T)
-        rxy = np.dot(Ri, XYa)
-        S = beta * XXd - beta ** 2 * np.sum(xxr ** 2, axis=1)
-        Q = beta * XY - beta ** 2 * np.dot(xxr, rxy)
+
+        xxr = np.dot(gram[:, active], Ri.T)
+        rxy = np.dot(Ri, XT_y[active])
+        S = beta * np.diag(gram) - beta ** 2 * np.sum(xxr ** 2, axis=1)
+        Q = beta * XT_y - beta ** 2 * np.dot(xxr, rxy)
 
         # Use following:
         # (EQ 1) q = A*Q/(A - S) ; s = A*S/(A-S), so if A = np.PINF q = Q, s = S
@@ -171,7 +160,7 @@ class RegressionARD:
         si = np.copy(S)
         #  If A is not np.PINF, then it should be 'active' feature => use (EQ 1)
         Qa, Sa = Q[active], S[active]
-        qi[active] = Aa * Qa / (Aa - Sa)
-        si[active] = Aa * Sa / (Aa - Sa)
+        qi[active] = alpha[active] * Qa / (alpha[active] - Sa)
+        si[active] = alpha[active] * Sa / (alpha[active] - Sa)
         return si, qi, S, Q
 
