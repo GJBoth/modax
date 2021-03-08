@@ -1,4 +1,5 @@
 import numpy as np
+from numpy.core.function_base import add_newdoc
 from scipy.linalg import solve_triangular
 from sklearn.utils import check_X_y
 
@@ -36,7 +37,10 @@ def update_precisions(Q, S, q, s, alpha, tol):
         alpha[feature_idx] = np.inf
 
     # Checking convergence
-    if np.all(theta < 0) and np.max(delta_alpha) < tol:
+    no_add = np.all(theta[np.isinf(alpha)] < 0)
+    no_del = np.all(theta[~np.isinf(alpha)] > 0)
+    max_delta_alpha = np.max(delta_alpha[~np.isinf(alpha)])
+    if no_add and no_del and max_delta_alpha < tol:
         converged = True
     else:
         converged = False
