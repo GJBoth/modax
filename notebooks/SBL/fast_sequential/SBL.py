@@ -8,57 +8,39 @@ def update_precisions(Q, S, q, s, alpha, tol):
     Selects one feature to be added/recomputed/deleted to model based on 
     effect it will have on value of log marginal likelihood.
     """
-    # initialise vector holding changes in log marginal likelihood
-    deltaL = np.zeros(Q.shape[0])
-
-    # identify features that can be added , recomputed and deleted in model
-    theta = q ** 2 - s
-    add = (theta > 0) * np.isinf(alpha)
-    recompute = (theta > 0) * ~np.isinf(alpha)
-    delete = ~(add + recompute)
-
-    # compute sparsity & quality parameters corresponding to features in
-    # three groups identified above
-    Qadd, Sadd = Q[add], S[add]
-    Qrec, Srec, alpharec = Q[recompute], S[recompute], alpha[recompute]
-    Qdel, Sdel, alphadel = Q[delete], S[delete], alpha[delete]
-
     # compute new alpha's (precision parameters) for features that are
     # currently in model and will be recomputed
-    alphanew = s[recompute] ** 2 / (theta[recompute] + np.finfo(np.float32).eps)
-    delta_alpha = 1.0 / alphanew - 1.0 / alpharec
+    theta = q ** 2 - s
+    alphanew = s ** 2 / theta
+    delta_alpha = 1.0 / alphanew - 1.0 / alpha
 
     # compute change in log marginal likelihood
-    deltaL[add] = (Qadd ** 2 - Sadd) / Sadd + np.log(Sadd / Qadd ** 2)
-    deltaL[recompute] = Qrec ** 2 / (Srec + 1.0 / delta_alpha) - np.log(
-        1 + Srec * delta_alpha
-    )
-    deltaL[delete] = Qdel ** 2 / (Sdel - alphadel) - np.log(1 - Sdel / alphadel)
+    L_add = (Q ** 2 - S) / S + np.log(S / Q ** 2)
+    L_add[~np.isinf(alpha)] = 0.0
 
-    # find feature which caused largest change in likelihood
-    feature_index = np.argmax(deltaL)
+    L_update = Q ** 2 / (S + 1 / delta_alpha) - np.log(1 + S * delta_alpha)
+    L_update[np.isinf(alpha)] = 0.0
 
-    # no deletions or additions
-    same_features = np.sum(theta[~recompute] > 0) == 0
+    L_delete = Q ** 2 / (S - alpha) - np.log(1 - S / alpha)
+    L_delete[np.isinf(alpha)] = 0.0
 
-    # changes in precision for features already in model is below threshold
-    no_delta = np.sum(abs(alphanew - alpharec) > tol) == 0
+    deltaL = np.stack([L_add, L_update, L_delete], axis=-1)
+    feature_idx, op = np.unravel_index(np.argmax(deltaL), deltaL.shape)
 
-    # check convergence: if no features to add or delete and small change in
-    #                    precision for current features then terminate
-    converged = False
-    active = ~np.isinf(alpha)
-    if same_features and no_delta:
+    # Updating alpha
+    if op == 0:
+        alpha[feature_idx] = alphanew[feature_idx]
+    elif op == 1:
+        alpha[feature_idx] = alphanew[feature_idx]
+    elif op == 2:
+        alpha[feature_idx] = np.inf
+
+    # Checking convergence
+    if np.all(theta < 0) and np.max(delta_alpha) < tol:
         converged = True
-        return [alpha, converged]
-
-    # if not converged update precision parameter of weights and return
-    if theta[feature_index] > 0:
-        alpha[feature_index] = s[feature_index] ** 2 / theta[feature_index]
     else:
-        # at least two active features
-        if active[feature_index] == True and np.sum(active) >= 2:
-            alpha[feature_index] = np.inf
+        converged = False
+
     return alpha, converged
 
 
