@@ -87,7 +87,9 @@ class SBL:
         Mn = solve_triangular(R.T, Z, check_finite=False, lower=False)
 
         # invert lower triangular matrix from cholesky decomposition
-        Ri = solve_triangular(R, np.eye(np.sum(active)), check_finite=False, lower=True)
+        Ri = solve_triangular(
+            R, np.eye(np.sum(active), dtype=np.float32), check_finite=False, lower=True
+        )
         return Mn, Ri
 
     def sparsity_quality(self, alpha, beta, gram, XT_y, Ri):
