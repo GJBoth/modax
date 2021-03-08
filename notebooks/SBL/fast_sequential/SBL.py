@@ -100,9 +100,7 @@ class RegressionARD:
             s, q, S, Q = self.sparsity_quality(alpha, beta, gram, XT_y, Ri)
 
             # update precision parameter for noise distribution
-            rss = np.sum((y - np.dot(X[:, active], Mn)) ** 2)
-            beta = n_samples - np.sum(active) + np.sum(alpha[active] * Sdiag)
-            beta /= rss + np.finfo(np.float32).eps
+            beta = self.noise(X, y, alpha, Mn, Sdiag)
 
             # update precision parameters of coefficients
             alpha, converged = update_precisions(Q, S, q, s, alpha, self.tol, n_samples)
@@ -164,3 +162,10 @@ class RegressionARD:
         si[active] = alpha[active] * Sa / (alpha[active] - Sa)
         return si, qi, S, Q
 
+    def noise(self, X, y, alpha, Mn, Sdiag):
+        active = ~np.isinf(alpha)
+        n_samples = X.shape[0]
+        rss = np.sum((y - np.dot(X[:, active], Mn)) ** 2)
+        beta = n_samples - np.sum(active) + np.sum(alpha[active] * Sdiag)
+        beta /= rss + np.finfo(np.float32).eps
+        return beta
