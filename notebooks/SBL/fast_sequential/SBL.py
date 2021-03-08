@@ -79,31 +79,10 @@ def update_precisions(Q, S, q, s, A, active, tol, n_samples):
 # -------------------------- Regression ARD ------------------------------------
 
 
-class RegressionARD(LinearModel, RegressorMixin):
-    def __init__(
-        self, n_iter=300, tol=1e-3, fit_intercept=True, copy_X=True, verbose=False
-    ):
+class RegressionARD:
+    def __init__(self, n_iter=300, tol=1e-3):
         self.n_iter = n_iter
         self.tol = tol
-        self.scores_ = list()
-        self.fit_intercept = fit_intercept
-        self.copy_X = copy_X
-        self.verbose = verbose
-
-    def _center_data(self, X, y):
-        """ Centers data"""
-        X = as_float_array(X, self.copy_X)
-        # normalisation should be done in preprocessing!
-        X_std = np.ones(X.shape[1], dtype=X.dtype)
-        if self.fit_intercept:
-            X_mean = np.average(X, axis=0)
-            y_mean = np.average(y, axis=0)
-            X -= X_mean
-            y = y - y_mean
-        else:
-            X_mean = np.zeros(X.shape[1], dtype=X.dtype)
-            y_mean = 0.0 if y.ndim == 1 else np.zeros(y.shape[1], dtype=X.dtype)
-        return X, y, X_mean, y_mean, X_std
 
     def fit(self, X, y):
         """
@@ -123,7 +102,6 @@ class RegressionARD(LinearModel, RegressorMixin):
             Returns self.
         """
         X, y = check_X_y(X, y, dtype=np.float64, y_numeric=True)
-        X, y, X_mean, y_mean, X_std = self._center_data(X, y)
         n_samples, n_features = X.shape
 
         #  precompute X'*Y , X'*X for faster iterations & allocate memory for
@@ -146,7 +124,7 @@ class RegressionARD(LinearModel, RegressorMixin):
 
         # in case of almost perfect multicollinearity between some features
         # start from feature 0
-        if np.sum(XXd - X_mean ** 2 < np.finfo(np.float32).eps) > 0:
+        if np.sum(XXd < np.finfo(np.float32).eps) > 0:
             A[0] = np.finfo(np.float16).eps
             active[0] = True
         else:
@@ -192,15 +170,7 @@ class RegressionARD(LinearModel, RegressorMixin):
 
             # update precision parameters of coefficients
             A, converged = update_precisions(Q, S, q, s, A, active, self.tol, n_samples)
-            if self.verbose:
-                print(
-                    ("Iteration: {0}, number of features " "in the model: {1}").format(
-                        i, np.sum(active)
-                    )
-                )
             if converged or i == self.n_iter - 1:
-                if converged and self.verbose:
-                    print("Algorithm converged !")
                 break
 
         # after last update of alpha & beta update parameters
@@ -213,37 +183,7 @@ class RegressionARD(LinearModel, RegressorMixin):
         self.active_ = active
         self.lambda_ = A
         self.alpha_ = beta
-        self._set_intercept(X_mean, y_mean, X_std)
         return self
-
-    def predict_dist(self, X):
-        """
-        Computes predictive distribution for test set.
-        Predictive distribution for each data point is one dimensional
-        Gaussian and therefore is characterised by mean and variance.
-        
-        Parameters
-        -----------
-        X: {array-like, sparse} (n_samples_test, n_features)
-           Test data, matrix of explanatory variables
-           
-        Returns
-        -------
-        : list of length two [y_hat, var_hat]
-        
-             y_hat: numpy array of size (n_samples_test,)
-                    Estimated values of targets on test set (i.e. mean of predictive
-                    distribution)
-           
-             var_hat: numpy array of size (n_samples_test,)
-                    Variance of predictive distribution
-        """
-        y_hat = self._decision_function(X)
-        var_hat = 1.0 / self.alpha_
-        var_hat += np.sum(
-            np.dot(X[:, self.active_], self.sigma_) * X[:, self.active_], axis=1
-        )
-        return y_hat, var_hat
 
     def _posterior_dist(self, A, beta, XX, XY, full_covar=False):
         """
