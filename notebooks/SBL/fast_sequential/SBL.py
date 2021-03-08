@@ -3,7 +3,7 @@ from scipy.linalg import solve_triangular
 from sklearn.utils import check_X_y
 
 
-def update_precisions(Q, S, q, s, A, active, tol, n_samples):
+def update_precisions(Q, S, q, s, alpha, tol, n_samples):
     """
     Selects one feature to be added/recomputed/deleted to model based on 
     effect it will have on value of log marginal likelihood.
@@ -12,6 +12,7 @@ def update_precisions(Q, S, q, s, A, active, tol, n_samples):
     deltaL = np.zeros(Q.shape[0])
 
     # identify features that can be added , recomputed and deleted in model
+    active = ~np.isinf(alpha)
     theta = q ** 2 - s
     add = (theta > 0) * (active == False)
     recompute = (theta > 0) * (active == True)
@@ -20,20 +21,20 @@ def update_precisions(Q, S, q, s, A, active, tol, n_samples):
     # compute sparsity & quality parameters corresponding to features in
     # three groups identified above
     Qadd, Sadd = Q[add], S[add]
-    Qrec, Srec, Arec = Q[recompute], S[recompute], A[recompute]
-    Qdel, Sdel, Adel = Q[delete], S[delete], A[delete]
+    Qrec, Srec, alpharec = Q[recompute], S[recompute], alpha[recompute]
+    Qdel, Sdel, alphadel = Q[delete], S[delete], alpha[delete]
 
     # compute new alpha's (precision parameters) for features that are
     # currently in model and will be recomputed
-    Anew = s[recompute] ** 2 / (theta[recompute] + np.finfo(np.float32).eps)
-    delta_alpha = 1.0 / Anew - 1.0 / Arec
+    alphanew = s[recompute] ** 2 / (theta[recompute] + np.finfo(np.float32).eps)
+    delta_alpha = 1.0 / alphanew - 1.0 / alpharec
 
     # compute change in log marginal likelihood
     deltaL[add] = (Qadd ** 2 - Sadd) / Sadd + np.log(Sadd / Qadd ** 2)
     deltaL[recompute] = Qrec ** 2 / (Srec + 1.0 / delta_alpha) - np.log(
         1 + Srec * delta_alpha
     )
-    deltaL[delete] = Qdel ** 2 / (Sdel - Adel) - np.log(1 - Sdel / Adel)
+    deltaL[delete] = Qdel ** 2 / (Sdel - alphadel) - np.log(1 - Sdel / alphadel)
     deltaL = deltaL / n_samples
 
     # find feature which caused largest change in likelihood
@@ -43,26 +44,23 @@ def update_precisions(Q, S, q, s, A, active, tol, n_samples):
     same_features = np.sum(theta[~recompute] > 0) == 0
 
     # changes in precision for features already in model is below threshold
-    no_delta = np.sum(abs(Anew - Arec) > tol) == 0
+    no_delta = np.sum(abs(alphanew - alpharec) > tol) == 0
 
     # check convergence: if no features to add or delete and small change in
     #                    precision for current features then terminate
     converged = False
     if same_features and no_delta:
         converged = True
-        return [A, converged]
+        return [alpha, converged]
 
     # if not converged update precision parameter of weights and return
     if theta[feature_index] > 0:
-        A[feature_index] = s[feature_index] ** 2 / theta[feature_index]
-        if active[feature_index] == False:
-            active[feature_index] = True
+        alpha[feature_index] = s[feature_index] ** 2 / theta[feature_index]
     else:
         # at least two active features
         if active[feature_index] == True and np.sum(active) >= 2:
-            active[feature_index] = False
-            A[feature_index] = np.inf
-    return [A, converged]
+            alpha[feature_index] = np.inf
+    return alpha, converged
 
 
 class RegressionARD:
@@ -80,57 +78,55 @@ class RegressionARD:
 
         #  initialise precision of noise & and coefficients
         beta = 1.0 / (np.var(y) + 1e-6)
-        A = np.inf * np.ones(n_features)
-        active = np.zeros(n_features, dtype=np.bool)
+        alpha = np.inf * np.ones(n_features)
 
         # start from a single basis vector with largest projection on targets
         proj = XY ** 2 / XXd
         start = np.argmax(proj)
-        active[start] = True
-        A[start] = XXd[start] / (proj[start] - 1 / beta)
+        alpha[start] = XXd[start] / (proj[start] - 1 / beta)
 
         for i in range(self.n_iter):
+            active = ~np.isinf(alpha)
             XXa = XX[active, :][:, active]
             XYa = XY[active]
-            Aa = A[active]
 
             # mean & covariance of posterior distribution
-            Mn, Ri = self._posterior_dist(Aa, beta, XXa, XYa)
+            Mn, Ri = self._posterior_dist(alpha[active], beta, XXa, XYa)
             Sdiag = np.sum(Ri ** 2, 0)
 
             # compute quality & sparsity parameters
-            s, q, S, Q = self._sparsity_quality(XX, XXd, XY, XYa, Aa, Ri, active, beta)
+            s, q, S, Q = self._sparsity_quality(XX, XXd, XY, XYa, alpha, Ri, beta)
 
             # update precision parameter for noise distribution
             rss = np.sum((y - np.dot(X[:, active], Mn)) ** 2)
-            beta = n_samples - np.sum(active) + np.sum(Aa * Sdiag)
+            beta = n_samples - np.sum(active) + np.sum(alpha[active] * Sdiag)
             beta /= rss + np.finfo(np.float32).eps
 
             # update precision parameters of coefficients
-            A, converged = update_precisions(Q, S, q, s, A, active, self.tol, n_samples)
+            alpha, converged = update_precisions(Q, S, q, s, alpha, self.tol, n_samples)
             if converged or i == self.n_iter - 1:
                 break
 
         # after last update of alpha & beta update parameters
         # of posterior distribution
-        XXa, XYa, Aa = XX[active, :][:, active], XY[active], A[active]
+        XXa, XYa, Aa = XX[active, :][:, active], XY[active], alpha[active]
         Mn, Sn = self._posterior_dist(Aa, beta, XXa, XYa, True)
         self.coef_ = np.zeros(n_features)
         self.coef_[active] = Mn
         self.sigma_ = Sn
         self.active_ = active
-        self.lambda_ = A
+        self.lambda_ = alpha
         self.alpha_ = beta
         return self
 
-    def _posterior_dist(self, A, beta, XX, XY, full_covar=False):
+    def _posterior_dist(self, alpha, beta, XX, XY, full_covar=False):
         """
         Calculates mean and covariance matrix of posterior distribution
         of coefficients.
         """
         # compute precision matrix for active features
         Sinv = beta * XX
-        np.fill_diagonal(Sinv, np.diag(Sinv) + A)
+        np.fill_diagonal(Sinv, np.diag(Sinv) + alpha)
 
         # find posterior mean : R*R.T*mean = beta*X.T*Y
         # solve(R*z = beta*X.T*Y) => find z => solve(R.T*mean = z) => find mean
@@ -139,14 +135,14 @@ class RegressionARD:
         Mn = solve_triangular(R.T, Z, check_finite=False, lower=False)
 
         # invert lower triangular matrix from cholesky decomposition
-        Ri = solve_triangular(R, np.eye(A.shape[0]), check_finite=False, lower=True)
+        Ri = solve_triangular(R, np.eye(alpha.shape[0]), check_finite=False, lower=True)
         if full_covar:
             Sn = np.dot(Ri.T, Ri)
             return Mn, Sn
         else:
             return Mn, Ri
 
-    def _sparsity_quality(self, XX, XXd, XY, XYa, Aa, Ri, active, beta):
+    def _sparsity_quality(self, XX, XXd, XY, XYa, alpha, Ri, beta):
         """
         Calculates sparsity and quality parameters for each feature
         
@@ -159,6 +155,8 @@ class RegressionARD:
         """
 
         # here Ri is inverse of lower triangular matrix obtained from cholesky decomp
+        active = ~np.isinf(alpha)
+        Aa = alpha[active]
         xxr = np.dot(XX[:, active], Ri.T)
         rxy = np.dot(Ri, XYa)
         S = beta * XXd - beta ** 2 * np.sum(xxr ** 2, axis=1)
