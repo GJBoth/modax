@@ -2,7 +2,7 @@ import numpy as np
 from scipy.linalg import solve_triangular
 
 
-def update_precisions(Q, S, q, s, A, active, tol, n_samples, clf_bias):
+def update_precisions(Q, S, q, s, A, active, tol, n_samples):
     """
     Selects one feature to be added/recomputed/deleted to model based on 
     effect it will have on value of log marginal likelihood.
@@ -59,12 +59,8 @@ def update_precisions(Q, S, q, s, A, active, tol, n_samples, clf_bias):
     else:
         # at least two active features
         if active[feature_index] == True and np.sum(active) >= 2:
-            # do not remove bias term in classification
-            # (in regression it is factored in through centering)
-            if not (feature_index == 0 and clf_bias):
-                active[feature_index] = False
-                A[feature_index] = np.PINF
-
+            active[feature_index] = False
+            A[feature_index] = np.inf
     return [A, converged]
 
 
@@ -111,9 +107,7 @@ class RegressionARD:
             beta /= rss + np.finfo(np.float32).eps
 
             # update precision parameters of coefficients
-            A, converged = update_precisions(
-                Q, S, q, s, A, active, self.tol, n_samples, False
-            )
+            A, converged = update_precisions(Q, S, q, s, A, active, self.tol, n_samples)
 
             if converged or i == self.n_iter - 1:
                 if converged and self.verbose:
