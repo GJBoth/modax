@@ -164,8 +164,8 @@ class RegressionARD:
 
     def noise(self, X, y, alpha, Mn, Sdiag):
         active = ~np.isinf(alpha)
-        n_samples = X.shape[0]
+        n_samples, n_features = X.shape
         rss = np.sum((y - np.dot(X[:, active], Mn)) ** 2)
-        beta = n_samples - np.sum(active) + np.sum(alpha[active] * Sdiag)
-        beta /= rss + np.finfo(np.float32).eps
+        beta = n_samples - n_features + np.sum(alpha[active] * Sdiag)
+        beta /= rss
         return beta
