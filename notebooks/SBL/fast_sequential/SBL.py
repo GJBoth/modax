@@ -160,14 +160,12 @@ class RegressionARD:
         C    = 1/beta + 1/alpha * X' * X
         C^-1 = beta - beta^2 * X * Sn * X'
         """
-        bxy = beta * XY
-        bxx = beta * XXd
 
         # here Ri is inverse of lower triangular matrix obtained from cholesky decomp
         xxr = np.dot(XX[:, active], Ri.T)
         rxy = np.dot(Ri, XYa)
-        S = bxx - beta ** 2 * np.sum(xxr ** 2, axis=1)
-        Q = bxy - beta ** 2 * np.dot(xxr, rxy)
+        S = beta * XXd - beta ** 2 * np.sum(xxr ** 2, axis=1)
+        Q = beta * XY - beta ** 2 * np.dot(xxr, rxy)
 
         # Use following:
         # (EQ 1) q = A*Q/(A - S) ; s = A*S/(A-S), so if A = np.PINF q = Q, s = S
@@ -177,5 +175,5 @@ class RegressionARD:
         Qa, Sa = Q[active], S[active]
         qi[active] = Aa * Qa / (Aa - Sa)
         si[active] = Aa * Sa / (Aa - Sa)
-        return [si, qi, S, Q]
+        return si, qi, S, Q
 
