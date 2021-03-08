@@ -23,6 +23,7 @@ def update_precisions(Q, S, q, s, alpha, tol):
     delta_L = np.stack([L_add, L_update, L_delete], axis=-1)
     delta_L[~np.isinf(alpha), 0] = 0.0
     delta_L[np.isinf(alpha), 1:] = 0.0
+    delta_L[theta < 0, 1] = 0.0
 
     feature_idx, op = np.unravel_index(np.argmax(delta_L), delta_L.shape)
 
@@ -116,14 +117,16 @@ class SBL:
 
     def init(self, X, y):
         n_samples, n_features = X.shape
-        X, y = check_X_y(X, y, dtype=np.float64)  # apparently need 64 bits for log.
+        X, y = check_X_y(
+            X, y, dtype=np.float32, y_numeric=True
+        )  # apparently need 64 bits for log.
 
         gram = np.dot(X.T, X)
         XT_y = np.dot(X.T, y)
 
         #  initialise precision of noise & and coefficients
-        beta = 1.0 / (np.var(y) + 1e-6)
-        alpha = np.inf * np.ones(n_features)
+        beta = np.float32(1.0 / (np.var(y) + 1e-6))
+        alpha = np.inf * np.ones(n_features, dtype=np.float32)
 
         # start from a single basis vector with largest projection on targets
         proj = XT_y ** 2 / np.diag(gram)
