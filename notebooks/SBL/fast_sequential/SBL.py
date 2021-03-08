@@ -3,7 +3,7 @@ from scipy.linalg import solve_triangular
 from sklearn.utils import check_X_y
 
 
-def update_precisions(Q, S, q, s, alpha, tol, n_samples):
+def update_precisions(Q, S, q, s, alpha, tol):
     """
     Selects one feature to be added/recomputed/deleted to model based on 
     effect it will have on value of log marginal likelihood.
@@ -12,10 +12,9 @@ def update_precisions(Q, S, q, s, alpha, tol, n_samples):
     deltaL = np.zeros(Q.shape[0])
 
     # identify features that can be added , recomputed and deleted in model
-    active = ~np.isinf(alpha)
     theta = q ** 2 - s
-    add = (theta > 0) * (active == False)
-    recompute = (theta > 0) * (active == True)
+    add = (theta > 0) * np.isinf(alpha)
+    recompute = (theta > 0) * ~np.isinf(alpha)
     delete = ~(add + recompute)
 
     # compute sparsity & quality parameters corresponding to features in
@@ -35,7 +34,6 @@ def update_precisions(Q, S, q, s, alpha, tol, n_samples):
         1 + Srec * delta_alpha
     )
     deltaL[delete] = Qdel ** 2 / (Sdel - alphadel) - np.log(1 - Sdel / alphadel)
-    deltaL = deltaL / n_samples
 
     # find feature which caused largest change in likelihood
     feature_index = np.argmax(deltaL)
@@ -49,6 +47,7 @@ def update_precisions(Q, S, q, s, alpha, tol, n_samples):
     # check convergence: if no features to add or delete and small change in
     #                    precision for current features then terminate
     converged = False
+    active = ~np.isinf(alpha)
     if same_features and no_delta:
         converged = True
         return [alpha, converged]
@@ -69,48 +68,21 @@ class RegressionARD:
         self.tol = tol
 
     def fit(self, X, y):
-        n_samples, n_features = X.shape
-        X, y = check_X_y(X, y, dtype=np.float64)  # apparently need 64 bits for log.
-
-        XY = np.dot(X.T, y)
-        XX = np.dot(X.T, X)
-        XXd = np.diag(XX)
-        gram = XX
-        XT_y = XY
-
-        #  initialise precision of noise & and coefficients
-        beta = 1.0 / (np.var(y) + 1e-6)
-        alpha = np.inf * np.ones(n_features)
-
-        # start from a single basis vector with largest projection on targets
-        proj = XY ** 2 / XXd
-        start = np.argmax(proj)
-        alpha[start] = XXd[start] / (proj[start] - 1 / beta)
-
+        alpha, beta, gram, XT_y = self.init(X, y)
         for i in range(self.n_iter):
-            active = ~np.isinf(alpha)
-            XXa = XX[active, :][:, active]
-            XYa = XY[active]
-
-            # mean & covariance of posterior distribution
             Mn, Ri = self.posterior_dist(alpha, beta, gram, XT_y)
-            Sdiag = np.sum(Ri ** 2, 0)
-
-            # compute quality & sparsity parameters
             s, q, S, Q = self.sparsity_quality(alpha, beta, gram, XT_y, Ri)
-
-            # update precision parameter for noise distribution
-            beta = self.noise(X, y, alpha, Mn, Sdiag)
-
-            # update precision parameters of coefficients
-            alpha, converged = update_precisions(Q, S, q, s, alpha, self.tol, n_samples)
-            if converged or i == self.n_iter - 1:
+            beta = self.noise(X, y, alpha, Mn, Ri)
+            alpha, converged = update_precisions(Q, S, q, s, alpha, self.tol)
+            if converged or i == self.n_iter:
                 break
 
         # after last update of alpha & beta update parameters
         # of posterior distribution
-        XXa, XYa, Aa = XX[active, :][:, active], XY[active], alpha[active]
-        Mn, Sn = self.posterior_dist(Aa, beta, XXa, XYa, True)
+        active = ~np.isinf(alpha)
+        n_samples, n_features = X.shape
+        Mn, Ri = self.posterior_dist(alpha, beta, gram, XT_y)
+        Sn = np.dot(Ri.T, Ri)
         self.coef_ = np.zeros(n_features)
         self.coef_[active] = Mn
         self.sigma_ = Sn
@@ -119,7 +91,7 @@ class RegressionARD:
         self.alpha_ = beta
         return self
 
-    def posterior_dist(self, alpha, beta, gram, XT_y, full_covar=False):
+    def posterior_dist(self, alpha, beta, gram, XT_y):
         """
         Calculates mean and covariance matrix of posterior distribution
         of coefficients.
@@ -137,11 +109,7 @@ class RegressionARD:
 
         # invert lower triangular matrix from cholesky decomposition
         Ri = solve_triangular(R, np.eye(np.sum(active)), check_finite=False, lower=True)
-        if full_covar:
-            Sn = np.dot(Ri.T, Ri)
-            return Mn, Sn
-        else:
-            return Mn, Ri
+        return Mn, Ri
 
     def sparsity_quality(self, alpha, beta, gram, XT_y, Ri):
         # here Ri is inverse of lower triangular matrix obtained from cholesky decomp
@@ -152,20 +120,35 @@ class RegressionARD:
         S = beta * np.diag(gram) - beta ** 2 * np.sum(xxr ** 2, axis=1)
         Q = beta * XT_y - beta ** 2 * np.dot(xxr, rxy)
 
-        # Use following:
-        # (EQ 1) q = A*Q/(A - S) ; s = A*S/(A-S), so if A = np.PINF q = Q, s = S
-        qi = np.copy(Q)
-        si = np.copy(S)
-        #  If A is not np.PINF, then it should be 'active' feature => use (EQ 1)
-        Qa, Sa = Q[active], S[active]
-        qi[active] = alpha[active] * Qa / (alpha[active] - Sa)
-        si[active] = alpha[active] * Sa / (alpha[active] - Sa)
+        si, qi = np.copy(S), np.copy(Q)
+        np.putmask(qi, active, alpha[active] * Q[active] / (alpha[active] - S[active]))
+        np.putmask(si, active, alpha[active] * S[active] / (alpha[active] - S[active]))
+
         return si, qi, S, Q
 
-    def noise(self, X, y, alpha, Mn, Sdiag):
+    def noise(self, X, y, alpha, Mn, Ri):
         active = ~np.isinf(alpha)
         n_samples, n_features = X.shape
+
+        Sdiag = np.sum(Ri ** 2, 0)
         rss = np.sum((y - np.dot(X[:, active], Mn)) ** 2)
         beta = n_samples - n_features + np.sum(alpha[active] * Sdiag)
         beta /= rss
         return beta
+
+    def init(self, X, y):
+        n_samples, n_features = X.shape
+        X, y = check_X_y(X, y, dtype=np.float64)  # apparently need 64 bits for log.
+
+        gram = np.dot(X.T, X)
+        XT_y = np.dot(X.T, y)
+
+        #  initialise precision of noise & and coefficients
+        beta = 1.0 / (np.var(y) + 1e-6)
+        alpha = np.inf * np.ones(n_features)
+
+        # start from a single basis vector with largest projection on targets
+        proj = XT_y ** 2 / np.diag(gram)
+        start = np.argmax(proj)
+        alpha[start] = np.diag(gram)[start] / (proj[start] - 1 / beta)
+        return alpha, beta, gram, XT_y
