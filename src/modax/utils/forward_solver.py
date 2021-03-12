@@ -4,6 +4,41 @@ from jax import jit, numpy as jnp, lax
 from functools import partial
 
 
+def fwd_solver_simple(f, z_init, norm_weight=None, tol=1e-4, max_iter=300):
+    # n_features calculates the norm over the first n_features of z.
+    # Useful for when you're iterating over a but check your convergence on b
+    # such as with SBL.
+
+    def while_loop(cond_fun, body_fun, init_val):
+        val = init_val
+        while cond_fun(val):
+            val = body_fun(val)
+        return val
+
+    @jit
+    def cond_fun(carry):
+        _, _, (iteration, gap) = carry
+        cond_norm = gap < tol
+        cond_iter = iteration >= max_iter
+        return ~jnp.logical_or(cond_norm, cond_iter)
+
+    @jit
+    def body_fun(carry):
+        z, z_prev, (iteration, gap) = carry
+        gap = jnp.linalg.norm((z - z_prev) * norm_weight)
+        return f(z), z, (iteration + 1, gap)
+
+    init_carry = (
+        f(z_init),
+        z_init,
+        (0, 10 * tol),
+    )
+    if norm_weight is None:
+        norm_weight = jnp.ones_like(z_init)
+    z_star, _, metrics = while_loop(cond_fun, body_fun, init_carry)
+    return z_star, metrics
+
+
 @partial(jit, static_argnums=(0,))
 def fwd_solver(f, z_init, norm_weight=None, tol=1e-4, max_iter=300):
     # n_features calculates the norm over the first n_features of z.
