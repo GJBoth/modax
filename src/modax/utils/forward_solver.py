@@ -95,7 +95,7 @@ def fixed_point_solver_bwd(f, res, z_star_bar):
             lambda u: vjp_z(u)[0] + z_star_bar,
             jnp.zeros_like(z_star),
             tol=1e-5,
-            max_iter=500,
+            max_iter=5000,
         )[0]
     )
     return (*res, None, None, None, None)  # None for init and to
