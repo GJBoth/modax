@@ -2,6 +2,7 @@ from modax.training.losses.utils import precision, normal_LL
 from modax.linear_model.SBL import SBL
 import jax.numpy as jnp
 import jax
+from jax import jit
 
 
 def loss_fn_SBL(params, state, model, X, y, warm_restart=True):
@@ -12,39 +13,36 @@ def loss_fn_SBL(params, state, model, X, y, warm_restart=True):
     )
 
     n_samples, n_features = theta.shape
-    prior_params_mse = (0.0, 0.0)
 
     # MSE stuff
-    tau = precision(y, prediction, *prior_params_mse)
+    tau = precision(y, prediction, 0.0, 0.0)
     p_mse, MSE = normal_LL(prediction, y, tau)
 
     # Regression stuff
     # we dont want the gradient
-    hyper_prior_params = (
+    beta_prior = (
         n_samples / 2,
         n_samples / (2 * jax.lax.stop_gradient(tau)),
     )
-    theta_normed = theta / jnp.linalg.norm(theta, axis=0)
+    # theta_normed = theta / jnp.linalg.norm(theta, axis=0)
 
-    if (loss_state["prior_init"] is None) or (warm_restart is False):
-        prior_init = jnp.concatenate(
-            [jnp.ones((n_features,)), 1.0 / jnp.var(dt)[jnp.newaxis]]
-        )
-    else:
+    if warm_restart:
         prior_init = loss_state["prior_init"]
+    else:
+        prior_init = None
 
     p_reg, mn, prior, fwd_metric = SBL(
-        theta_normed,
+        theta,
         dt,
         prior_init=prior_init,
-        beta_prior=hyper_prior_params,
-        tol=1e-3,
-        max_iter=300,
+        hyper_prior=((1e-6, 1e-6), beta_prior),
+        tol=1e-4,
+        max_iter=2000,
     )
 
-    Reg = jnp.mean((dt - theta_normed @ mn) ** 2)
+    Reg = jnp.mean((dt - theta @ mn) ** 2)
 
-    loss_state["prior_init"] = prior
+    updated_loss_state = {"prior_init": prior}
     loss = -(p_mse + p_reg)
     metrics = {
         "loss": loss,
@@ -58,10 +56,14 @@ def loss_fn_SBL(params, state, model, X, y, warm_restart=True):
         "beta": prior[-1],
         "tau": tau,
         "its": fwd_metric[0],
-        "gap": fwd_metric[1],
+        "dLda": fwd_metric[1],
     }
 
     return (
         loss,
-        ((updated_model_state, loss_state), metrics, (prediction, dt, theta, mn)),
+        (
+            (updated_model_state, updated_loss_state),
+            metrics,
+            (prediction, dt, theta, mn),
+        ),
     )
