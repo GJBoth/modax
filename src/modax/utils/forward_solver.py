@@ -4,47 +4,49 @@ from jax import jit, numpy as jnp, lax
 from functools import partial
 
 
-@partial(jit, static_argnums=(0,))
-def fwd_solver(f, z_init, tol=1e-4, max_iter=300):
-    def cond_fun(carry):
-        _, _, (iteration, gap) = carry
-        cond_norm = gap < tol
-        cond_iter = iteration >= max_iter
-        return ~jnp.logical_or(cond_norm, cond_iter)
+@partial(jit, static_argnums=(0, 2))
+def fwd_solver(f, z_init, cond_fun, max_iter=300):
+    def _cond_fun(carry):
+        z_prev, z, iteration = carry
+        return jax.lax.cond(
+            iteration >= max_iter,
+            lambda _: False,
+            lambda args: cond_fun(*args),
+            (z_prev, z),
+        )
 
     def body_fun(carry):
-        z, z_prev, (iteration, gap) = carry
-        gap = jnp.linalg.norm(z[:-1] - z_prev[:-1])
-        return f(z), z, (iteration + 1, gap)
+        _, z, iteration = carry
+        return z, f(z), iteration + 1
 
     init_carry = (
-        f(z_init),
         z_init,
-        (0, 10 * tol),
+        f(z_init),
+        1,
     )
-    z_star, _, metrics = lax.while_loop(cond_fun, body_fun, init_carry)
+    z_star, _, metrics = lax.while_loop(_cond_fun, body_fun, init_carry)
     return z_star, metrics
 
 
 # Custom backprop function for iterative methods
-@partial(jax.custom_vjp, nondiff_argnums=(0,))
-@partial(jit, static_argnums=(0,))
-def fixed_point_solver(f, args, z_init, tol=1e-4, max_iter=300):
+@partial(jax.custom_vjp, nondiff_argnums=(0, 3))
+@partial(jit, static_argnums=(0, 3))
+def fixed_point_solver(f, args, z_init, cond_fun, max_iter=300):
     z_star, metrics = fwd_solver(
-        lambda z: f(z, *args), z_init=z_init, tol=tol, max_iter=max_iter
+        lambda z: f(z, *args), z_init, cond_fun, max_iter=max_iter,
     )
     return z_star, metrics
 
 
-@partial(jit, static_argnums=(0,))
-def fixed_point_solver_fwd(f, args, z_init, tol, max_iter):
-    z_star, metrics = fixed_point_solver(f, args, z_init, tol, max_iter)
-    return (z_star, metrics), (z_star, tol, max_iter, args)
+@partial(jit, static_argnums=(0, 3))
+def fixed_point_solver_fwd(f, args, z_init, cond_fun, max_iter):
+    z_star, metrics = fixed_point_solver(f, args, z_init, cond_fun, max_iter)
+    return (z_star, metrics), (z_star, args)
 
 
 @partial(jit, static_argnums=(0,))
 def fixed_point_solver_bwd(f, res, z_star_bar):
-    z_star, tol, max_iter, args = res
+    z_star, args = res
     z_star_bar = z_star_bar[0]  # we dont take the gradient w.r.t metric
 
     _, vjp_a = jax.vjp(lambda args: f(z_star, *args), args)
@@ -52,12 +54,12 @@ def fixed_point_solver_bwd(f, res, z_star_bar):
     res = vjp_a(
         fwd_solver(
             lambda u: vjp_z(u)[0] + z_star_bar,
-            z_init=jnp.zeros_like(z_star),
-            tol=tol,
-            max_iter=max_iter,
+            jnp.zeros_like(z_star),
+            lambda z_prev, z: jnp.linalg(z - z_prev) > 1e-5,
+            max_iter=5000,
         )[0]
     )
-    return (*res, None, None, None)  # None for init and to
+    return (*res, None, None)  # None for init and max_iter
 
 
 fixed_point_solver.defvjp(fixed_point_solver_fwd, fixed_point_solver_bwd)
