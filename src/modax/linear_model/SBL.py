@@ -87,10 +87,13 @@ def SBL(
 
     n_samples, n_features = X.shape
     if prior_init is None:
-        prior_init = jnp.ones((n_features + 2,))
+        prior_init = jnp.ones((n_features + 1,))
         prior_init = jax.ops.index_update(
             prior_init, n_features, 1 / (jnp.var(y) + 1e-6)
         )  # setting initial noise value
+
+    # Adding term for gradient of loss
+    prior_init = jnp.concatenate([prior_init, jnp.ones((1,))], axis=0)
 
     gram = jnp.dot(X.T, X)
     XT_y = jnp.dot(X.T, y)

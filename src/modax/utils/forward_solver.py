@@ -22,7 +22,7 @@ def fwd_solver(f, z_init, cond_fun, max_iter=300):
     init_carry = (
         z_init,
         f(z_init),
-        0,
+        1,
     )
     z_star, _, metrics = lax.while_loop(_cond_fun, body_fun, init_carry)
     return z_star, metrics
