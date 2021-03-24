@@ -6,8 +6,8 @@ from modax.models import Deepmod
 from modax.training.utils import create_update
 from flax import optim
 
-from code import loss_fn_bayesian_ridge
 from modax.training import train_max_iter
+from modax.training.losses.bayesian_regression import loss_fn_bayesian_ridge
 
 # %% Making data
 key = random.PRNGKey(42)
