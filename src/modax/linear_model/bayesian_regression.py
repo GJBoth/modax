@@ -1,6 +1,8 @@
 # %% Imports
 from jax import jit, numpy as jnp
+from jax._src.lax.lax import stop_gradient
 from ..utils.forward_solver import fixed_point_solver
+import jax
 
 
 @jit
@@ -8,55 +10,42 @@ def bayesian_regression(
     X,
     y,
     prior_init=None,
-    alpha_prior=(1e-6, 1e-6),
-    beta_prior=(1e-6, 1e-6),
+    hyper_prior=((1e-6, 1e-6), (1e-6, 1e-6)),
     tol=1e-5,
     max_iter=300,
 ):
 
+    n_samples, n_features = X.shape
     # Prepping matrices
     XT_y = jnp.dot(X.T, y)
     _, S, Vh = jnp.linalg.svd(X, full_matrices=False)
     eigen_vals = S ** 2
 
     if prior_init is None:
-        prior_init = jnp.concatenate(
-            [jnp.ones((1,)), (1.0 / (jnp.var(y) + 1e-7))[jnp.newaxis]], axis=0,
-        )
-
-    # add in zeros for the noise
-    norm_weight = jnp.concatenate((jnp.ones((1,)), jnp.zeros((1,))), axis=0)
+        prior_init = jnp.ones((2,))
+        prior_init = jax.ops.index_update(prior_init, 1, 1 / (jnp.var(y) + 1e-7))
 
     # Running
-    prior_params, metrics = fixed_point_solver(
+    prior_params, iterations = fixed_point_solver(
         update,
-        (X, y, eigen_vals, Vh, XT_y, alpha_prior, beta_prior),
+        (X, y, eigen_vals, Vh, XT_y, hyper_prior),
         prior_init,
-        norm_weight,
-        tol=tol,
+        lambda z_prev, z: jnp.linalg.norm(z_prev[0] - z[0]) > tol,
         max_iter=max_iter,
     )
 
-    log_LL, mn = evidence(
-        X, y, prior_params, eigen_vals, Vh, XT_y, alpha_prior, beta_prior
-    )
-    return log_LL, mn, prior_params, metrics
+    prior = stop_gradient(prior_params)
+    log_LL, mn = evidence(X, y, prior, eigen_vals, Vh, XT_y, hyper_prior)
+    metrics = (iterations, 0.0)
+    return log_LL, mn, prior, metrics
 
 
 @jit
-def update(
-    prior,
-    X,
-    y,
-    eigen_vals,
-    Vh,
-    XT_y,
-    alpha_prior=(1e-6, 1e-6),
-    beta_prior=(1e-6, 1e-6),
-):
+def update(prior, X, y, eigen_vals, Vh, XT_y, hyper_prior):
 
     n_samples, n_features = X.shape
     alpha, beta = prior[:-1], prior[-1]
+    alpha_prior, beta_prior = hyper_prior
     # Calculating coeffs
     coeffs = jnp.linalg.multi_dot(
         [Vh.T, Vh / (eigen_vals + alpha / beta)[:, jnp.newaxis], XT_y]
@@ -71,10 +60,10 @@ def update(
 
 
 @jit
-def evidence(X, y, prior, eigen_vals, Vh, XT_y, alpha_prior, beta_prior):
+def evidence(X, y, prior, eigen_vals, Vh, XT_y, hyper_prior):
     # compute the log of the determinant of the posterior covariance.
     # posterior covariance is given by
-    # sigma = (lambda_ * np.eye(n_features) + alpha_ * np.dot(X.T, X))^-1
+    alpha_prior, beta_prior = hyper_prior
     alpha, beta = prior[:-1], prior[-1]
     n_samples, n_features = X.shape
     coeffs = jnp.linalg.multi_dot(

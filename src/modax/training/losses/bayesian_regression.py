@@ -11,33 +11,32 @@ def loss_fn_bayesian_ridge(params, state, model, X, y, warm_restart=True):
         variables, X, mutable=list(model_state.keys())
     )
 
-    n_samples = theta.shape[0]
-    prior_params_mse = (0.0, 0.0)
+    n_samples, n_features = theta.shape
 
     # MSE stuff
-    tau = precision(y, prediction, *prior_params_mse)
+    tau = precision(y, prediction, 0.0, 0.0)
     p_mse, MSE = normal_LL(prediction, y, tau)
 
     # Regression stuff
     # we dont want the gradient
-    hyper_prior_params = (
+    beta_prior = (
         n_samples / 2,
         n_samples / (2 * jax.lax.stop_gradient(tau)),
     )
     theta_normed = theta / jnp.linalg.norm(theta, axis=0)
 
-    if (loss_state["prior_init"] is None) or (warm_restart is False):
-        prior_init = jnp.stack([1.0, 1.0 / jnp.var(dt)])
-    else:
+    if warm_restart:
         prior_init = loss_state["prior_init"]
+    else:
+        prior_init = None
 
     p_reg, mn, prior, fwd_metric = bayesian_regression(
         theta_normed,
         dt,
         prior_init=prior_init,
-        beta_prior=hyper_prior_params,
-        tol=1e-3,  # * jax.lax.stop_gradient(tau),
-        max_iter=300,
+        hyper_prior=((1e-6, 1e-6), beta_prior),
+        tol=1e-3,
+        max_iter=1000,
     )
 
     Reg = jnp.mean((dt - theta_normed @ mn) ** 2)
