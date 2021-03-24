@@ -43,15 +43,17 @@ def update_prior(X, y, posterior, prior, hyper_prior):
             - alpha * alpha_prior[1]
         )
     )
-    return jnp.minimum(1e7, alpha), jnp.minimum(1e7, beta), jnp.mean(jnp.abs(dLda))
+
+    return jnp.minimum(1e5, alpha), jnp.minimum(1e5, beta)
 
 
 def update(prior, X, y, gram, XT_y, hyper_prior):
-    alpha, beta = prior[:-2], prior[-2]
+    n_samples, n_features = X.shape
+    alpha, beta, _ = prior[:n_features], prior[n_features], prior[-n_features:]
     posterior = update_posterior(gram, XT_y, (alpha, beta))
-    alpha, beta, loss_grad = update_prior(X, y, posterior, (alpha, beta), hyper_prior)
+    alpha, beta, = update_prior(X, y, posterior, (alpha, beta), hyper_prior)
 
-    return jnp.concatenate([alpha, beta[jnp.newaxis], loss_grad[jnp.newaxis]], axis=0)
+    return jnp.concatenate([alpha, beta[jnp.newaxis], posterior[0].squeeze()], axis=0)
 
 
 def evidence(X, y, gram, XT_y, prior, hyper_prior):
@@ -82,7 +84,6 @@ def SBL(
     hyper_prior=((1e-6, 1e-6), (1e-6, 1e-6)),
     tol=1e-5,
     max_iter=1000,
-    stop_prior_grad=True,
 ):
 
     n_samples, n_features = X.shape
@@ -93,22 +94,24 @@ def SBL(
         )  # setting initial noise value
 
     # Adding term for gradient of loss
-    prior_init = jnp.concatenate([prior_init, jnp.ones((1,))], axis=0)
+    prior_init = jnp.concatenate([prior_init, jnp.ones((n_features,))], axis=0)
 
     gram = jnp.dot(X.T, X)
     XT_y = jnp.dot(X.T, y)
 
-    prior_params, metrics = fixed_point_solver(
+    prior_params, iterations = fixed_point_solver(
         update,
         (X, y, gram, XT_y, hyper_prior),
         prior_init,
-        lambda z_prev, z: z[-1] > tol,
+        lambda z_prev, z: jnp.linalg.norm(z_prev[-n_features:] - z[-n_features:]) > tol,
         max_iter=max_iter,
     )
 
-    prior = jax.lax.cond(
-        stop_prior_grad, lambda x: stop_gradient(x[:-1]), lambda x: x[:-1], prior_params
+    prior = stop_gradient(prior_params)
+    loss, mn = evidence(X, y, gram, XT_y, prior[:-n_features], hyper_prior)
+    metrics = (
+        iterations,
+        jnp.linalg.norm(mn.squeeze() - prior[-n_features:]),
+        prior[-n_features:],
     )
-
-    loss, mn = evidence(X, y, gram, XT_y, prior, hyper_prior)
-    return loss, mn, prior, metrics
+    return loss, mn, prior[:-n_features], metrics
