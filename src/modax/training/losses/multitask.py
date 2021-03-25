@@ -1,5 +1,5 @@
 import jax.numpy as jnp
-from modax.losses.utils import normal_LL, gamma_LL, precision
+from .utils import normal_LL, gamma_LL, precision
 
 # Maximum likelihood stuff
 def loss_fn_mse_grad(params, state, model, x, y):
@@ -34,7 +34,7 @@ def loss_fn_mse_precalc(params, state, model, x, y):
     """ first argument should always be params!
     """
     variables = {"params": params, **state}
-    (prediction, dt, theta, coeffs, z), updated_state = model.apply(
+    (prediction, dt, theta, coeffs), updated_state = model.apply(
         variables, x, mutable=list(state.keys())
     )
 
@@ -91,7 +91,7 @@ def loss_fn_multitask_precalc(params, state, model, x, y):
     """ first argument should always be params!
     """
     variables = {"params": params, **state}
-    (prediction, dt, theta, coeffs, z), updated_state = model.apply(
+    (prediction, dt, theta, coeffs), updated_state = model.apply(
         variables, x, mutable=list(state.keys())
     )
 
