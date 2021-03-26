@@ -252,7 +252,7 @@ def loss_fn_pinn_bayes_mse_hyperprior(
 
     # Calculating precision of reg
 
-    hyper_prior_nu = (n_samples / 2, n_samples / (2 * stop_gradient(tau)))
+    hyper_prior_nu = (n_samples / 2, n_samples / stop_gradient(tau))
     nu = precision(dt, theta @ coeffs, *hyper_prior_nu)
     # calculates nu given gamma prior
     p_reg, reg = normal_LL(dt, theta @ coeffs, nu)
