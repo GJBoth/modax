@@ -7,15 +7,16 @@ from modax.training.utils import create_update
 from flax import optim
 
 from modax.training import train_max_iter
+from modax.training.losses.standard import loss_fn_pinn
 from modax.training.losses.multitask import (
     loss_fn_multitask_precalc,
-    loss_fn_pinn_bayes_typeII,
+    loss_fn_pinn_bayes_mse_hyperprior,
 )
 
 script_dir = "/home/gert-jan/Documents/modax/paper/multitask/runs/"
 key = random.PRNGKey(42)
 noise = 0.10
-n_runs = 5
+n_runs = 1
 max_iterations = 5000
 
 # Making data
@@ -29,13 +30,14 @@ y = u.reshape(-1, 1)
 y += noise * jnp.std(y) * random.normal(key, y.shape)
 
 
-# Running normal multitask
+# Defning model and optimizers
 model = Deepmod([30, 30, 30, 1])
-update_fn = create_update(loss_fn_multitask_precalc, (model, X, y))
 optimizer_def = optim.Adam(learning_rate=2e-3, beta1=0.99, beta2=0.99)
 
+# Running multitask
+update_fn = create_update(loss_fn_multitask_precalc, (model, X, y))
 for run_idx, subkey in enumerate(random.split(key, n_runs)):
-    print(f"Starting run {run_idx}")
+    print(f"Starting multitask run {run_idx}")
     variables = model.init(subkey, X)
     state, params = variables.pop("params")
     optimizer = optimizer_def.create(params)
@@ -45,4 +47,34 @@ for run_idx, subkey in enumerate(random.split(key, n_runs)):
         state,
         max_iterations,
         log_dir=script_dir + f"multitask_run_{run_idx}/",
+    )
+
+# Running bayesian multitask
+update_fn = create_update(loss_fn_pinn_bayes_mse_hyperprior, (model, X, y))
+for run_idx, subkey in enumerate(random.split(key, n_runs)):
+    print(f"Starting bayes run {run_idx}")
+    variables = model.init(subkey, X)
+    state, params = variables.pop("params")
+    optimizer = optimizer_def.create(params)
+    train_max_iter(
+        update_fn,
+        optimizer,
+        state,
+        max_iterations,
+        log_dir=script_dir + f"bayes_run_{run_idx}/",
+    )
+
+# Running normal PINN
+update_fn = create_update(loss_fn_pinn, (model, X, y))
+for run_idx, subkey in enumerate(random.split(key, n_runs)):
+    print(f"Starting pinn run {run_idx}")
+    variables = model.init(subkey, X)
+    state, params = variables.pop("params")
+    optimizer = optimizer_def.create(params)
+    train_max_iter(
+        update_fn,
+        optimizer,
+        state,
+        max_iterations,
+        log_dir=script_dir + f"pinn_run_{run_idx}/",
     )
