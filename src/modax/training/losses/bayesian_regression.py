@@ -21,7 +21,7 @@ def loss_fn_bayesian_ridge(params, state, model, X, y, warm_restart=True):
     # we dont want the gradient
     beta_prior = (
         n_samples / 2,
-        n_samples / (2 * jax.lax.stop_gradient(tau)),
+        n_samples / (jax.lax.stop_gradient(tau)),
     )
     theta_normed = theta / jnp.linalg.norm(theta, axis=0)
 
