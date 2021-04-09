@@ -5,6 +5,8 @@ from jax.scipy.linalg import solve_triangular
 from jax.numpy.linalg import cholesky
 from jax.lax import stop_gradient
 from functools import partial
+import numpy as np
+
 
 def update_posterior(gram, XT_y, prior):
     alpha, beta = prior
@@ -49,11 +51,11 @@ def update_prior(X, y, posterior, prior, hyper_prior):
 
 def update(prior, X, y, gram, XT_y, hyper_prior):
     n_samples, n_features = X.shape
-    alpha, beta, _ = prior[:n_features], prior[n_features], prior[-n_features:]
+    alpha, beta = prior[:-1], prior[-1]  # prior[n_features]#, prior[-n_features:]
     posterior = update_posterior(gram, XT_y, (alpha, beta))
     alpha, beta, = update_prior(X, y, posterior, (alpha, beta), hyper_prior)
 
-    return jnp.concatenate([alpha, beta[jnp.newaxis], posterior[0].squeeze()], axis=0)
+    return jnp.concatenate([alpha, beta[jnp.newaxis]], axis=0)
 
 
 def evidence(X, y, gram, XT_y, prior, hyper_prior):
@@ -76,7 +78,7 @@ def evidence(X, y, gram, XT_y, prior, hyper_prior):
     return score.squeeze(), mean
 
 
-@partial(jit, static_argnums=(0, ))
+@partial(jit, static_argnums=(0,))
 def SBL(
     solver,
     X,
@@ -95,7 +97,7 @@ def SBL(
         )  # setting initial noise value
 
     # Adding term for gradient of loss
-    prior_init = jnp.concatenate([prior_init, jnp.ones((n_features,))], axis=0)
+    # prior_init = jnp.concatenate([prior_init, jnp.ones((n_features,))], axis=0)
 
     gram = jnp.dot(X.T, X)
     XT_y = jnp.dot(X.T, y)
@@ -104,14 +106,15 @@ def SBL(
         update,
         (X, y, gram, XT_y, hyper_prior),
         prior_init,
-        lambda z_prev, z: jnp.linalg.norm(z_prev[-n_features:] - z[-n_features:]) > tol,
+        lambda z_prev, z: True,
         max_iter=max_iter,
     )
 
-    prior, prev_mn = jnp.split(prior_params, [n_features+1, ])
-    loss, mn = evidence(X, y, gram, XT_y, prior, hyper_prior)
+    # prior, prev_mn = jnp.split(prior_params, [n_features + 1,])
+    loss, mn = evidence(X, y, gram, XT_y, prior_params, hyper_prior)
     metrics = (
         iterations,
-        jnp.linalg.norm(mn.squeeze() - prev_mn),
+        0
+        # jnp.linalg.norm(mn.squeeze() - prev_mn),
     )
-    return loss, mn, prior, metrics
+    return loss, mn, prior_params, metrics

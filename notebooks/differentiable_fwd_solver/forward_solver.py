@@ -3,9 +3,34 @@ import jax
 from jax import jit, numpy as jnp, lax
 from functools import partial
 
+
+@partial(jit, static_argnums=(0, 2))
+def fwd_solver_jittable_diffable(f, z_init, break_fn):
+    def cond_fun(carry):
+        z_prev, z, iteration = carry
+        with jax.disable_jit():
+            conv = jnp.linalg.norm(z_prev - z) > 1e-5
+        return conv
+
+    def body_fun(carry):
+        _, z, iteration = carry
+        return z, f(z), iteration + 1
+
+    carry = (
+        z_init,
+        f(z_init),
+        1,
+    )
+
+    while cond_fun(carry):
+        carry = body_fun(carry)
+    _, z_star, metrics = carry
+    return z_star, metrics
+
+
 # Explicit method
 @partial(jit, static_argnums=(0, 2))
-def fwd_solver_diffable(f, z_init, break_fun, max_iter=300):
+def fwd_solver_diffable(f, z_init, break_fn, max_iterations):
     def while_loop(cond_fun, body_fun, init_val):
         val = init_val
         while cond_fun(val):
@@ -14,12 +39,10 @@ def fwd_solver_diffable(f, z_init, break_fun, max_iter=300):
 
     def _cond_fun(carry):
         z_prev, z, iteration = carry
-        return jax.lax.cond(
-            iteration >= max_iter,
-            lambda _: False,
-            lambda args: break_fun(*args),
-            (z_prev, z),
-        )
+        if iteration < max_iterations:
+            return break_fn(z_prev, z)
+        else:
+            return False
 
     def body_fun(carry):
         _, z, iteration = carry
@@ -61,9 +84,9 @@ def fwd_solver(f, z_init, cond_fun, max_iter=300):
 
 # Explicit differentiation function.
 @partial(jit, static_argnums=(0, 3))
-def fixed_point_solver_explicit(f, args, z_init, cond_fun, max_iter=300):
+def fixed_point_solver_explicit(f, args, z_init, cond_fun, max_iter):
     z_star, metrics = fwd_solver_diffable(
-        lambda z: f(z, *args), z_init, cond_fun, max_iter=max_iter,
+        lambda z: f(z, *args), z_init, cond_fun, max_iter
     )
     return z_star, metrics
 
