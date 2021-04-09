@@ -24,7 +24,7 @@ def fwd_solver(f, z_init, cond_fun, max_iter=300):
         f(z_init),
         1,
     )
-    z_star, _, metrics = lax.while_loop(_cond_fun, body_fun, init_carry)
+    _, z_star, metrics = lax.while_loop(_cond_fun, body_fun, init_carry)
     return z_star, metrics
 
 

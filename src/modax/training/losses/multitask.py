@@ -1,5 +1,6 @@
+from jax.lax import stop_gradient
 import jax.numpy as jnp
-from modax.losses.utils import normal_LL, gamma_LL, precision
+from .utils import normal_LL, gamma_LL, precision
 
 # Maximum likelihood stuff
 def loss_fn_mse_grad(params, state, model, x, y):
@@ -34,7 +35,7 @@ def loss_fn_mse_precalc(params, state, model, x, y):
     """ first argument should always be params!
     """
     variables = {"params": params, **state}
-    (prediction, dt, theta, coeffs, z), updated_state = model.apply(
+    (prediction, dt, theta, coeffs), updated_state = model.apply(
         variables, x, mutable=list(state.keys())
     )
 
@@ -91,7 +92,7 @@ def loss_fn_multitask_precalc(params, state, model, x, y):
     """ first argument should always be params!
     """
     variables = {"params": params, **state}
-    (prediction, dt, theta, coeffs, z), updated_state = model.apply(
+    (prediction, dt, theta, coeffs), updated_state = model.apply(
         variables, x, mutable=list(state.keys())
     )
 
@@ -204,7 +205,7 @@ def loss_fn_pinn_bayes_typeII(
 ):
 
     variables = {"params": params, **state}
-    (prediction, dt, theta, coeffs, z), updated_state = model.apply(
+    (prediction, dt, theta, coeffs), updated_state = model.apply(
         variables, x, mutable=list(state.keys())
     )
 
@@ -235,12 +236,39 @@ def loss_fn_pinn_bayes_typeII(
     return loss, (updated_state, metrics, (prediction, dt, theta, coeffs))
 
 
-# Fully bayesian stuff?
+def loss_fn_pinn_bayes_mse_hyperprior(
+    params, state, model, x, y, prior_params_mse=(0.0, 0.0)
+):
 
+    variables = {"params": params, **state}
+    (prediction, dt, theta, coeffs), updated_state = model.apply(
+        variables, x, mutable=list(state.keys())
+    )
+    n_samples, n_features = theta.shape
+    # Calculating precision of mse
+    tau = precision(y, prediction, *prior_params_mse)
+    p_mse, MSE = normal_LL(prediction, y, tau)
+    p_mse += gamma_LL(tau, *prior_params_mse)  # adding prior
 
-# Different constraints
+    # Calculating precision of reg
 
-# Bay.Reg.
+    hyper_prior_nu = (n_samples / 2, n_samples / stop_gradient(tau))
+    nu = precision(dt, theta @ coeffs, *hyper_prior_nu)
+    # calculates nu given gamma prior
+    p_reg, reg = normal_LL(dt, theta @ coeffs, nu)
+    p_reg += gamma_LL(nu, *hyper_prior_nu)  # adding priorr
 
+    loss = -(p_mse + p_reg)
 
-# SBL
+    metrics = {
+        "loss": loss,
+        "p_mse": p_mse,
+        "mse": MSE,
+        "p_reg": p_reg,
+        "reg": reg,
+        "coeff": coeffs,
+        "tau": tau,
+        "nu": nu,
+    }
+    return loss, (updated_state, metrics, (prediction, dt, theta, coeffs))
+

@@ -6,10 +6,10 @@ from .logging import Logger
 from flax.core import freeze
 
 
-def train_max_iter(update_fn, optimizer, state, max_epochs):
+def train_max_iter(update_fn, optimizer, state, max_epochs, log_dir=None):
     """Run update_fn for max_epochs iteration.
     """
-    logger = Logger()
+    logger = Logger(log_dir)
     for epoch in jnp.arange(max_epochs):
         (optimizer, state), metrics, output = update_fn(optimizer, state)
 
