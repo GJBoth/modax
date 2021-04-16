@@ -2,7 +2,6 @@ from modax.training.losses.utils import precision, normal_LL
 from modax.linear_model.SBL import SBL
 import jax.numpy as jnp
 import jax
-from jax import jit
 
 
 def BIC(prediction, y, u_t, theta, alpha, alpha_threshold=1e4):
