@@ -1,29 +1,9 @@
 from modax.training.losses.utils import precision, normal_LL
-from modax.linear_model.SBL import SBL
+from SBL import SBL
 import jax.numpy as jnp
 import jax
-
-
-def BIC(prediction, y, u_t, theta, alpha, alpha_threshold=1e4):
-    n_samples = theta.shape[0]
-
-    # MSE part
-    mse = jnp.mean((prediction - y) ** 2)
-
-    # Reg part
-    mask = alpha < alpha_threshold
-    coeffs, reg = jnp.linalg.lstsq(theta * jnp.where(mask == 0, 1e-7, 1.0), u_t)[:2]
-    reg = reg / n_samples
-    coeffs = coeffs.squeeze() * mask
-
-    # BIC
-    BIC = n_samples * (jnp.log(mse) + jnp.log(reg)) + jnp.log(n_samples) * jnp.sum(mask)
-
-    return (
-        BIC.squeeze(),
-        (mse.squeeze(), reg.squeeze()),
-        coeffs,
-    )
+from jax import jit
+from forward_solver import fixed_point_solver_implicit
 
 
 def loss_fn_SBL(params, state, model, X, y, warm_restart=True):
@@ -45,37 +25,37 @@ def loss_fn_SBL(params, state, model, X, y, warm_restart=True):
         n_samples / 2,
         n_samples / (jax.lax.stop_gradient(tau)),
     )
+    # theta_normed = theta / jnp.linalg.norm(theta, axis=0)
 
     if warm_restart:
         prior_init = loss_state["prior_init"]
     else:
         prior_init = None
 
-    p_reg, mn, prior, fwd_metric = SBL(
+    p_reg, mn, prior, fwd_metric = SBL(fixed_point_solver_implicit,
         theta,
         dt,
         prior_init=prior_init,
         hyper_prior=((1e-6, 1e-6), beta_prior),
-        tol=1e-4,
-        max_iter=2000,
+        max_iter=1000,
     )
 
-    BIC_val, (mse, reg), masked_coeffs = BIC(prediction, y, dt, theta, prior[:-1], 1e4)
+    Reg = jnp.mean((dt - theta @ mn) ** 2)
+
     updated_loss_state = {"prior_init": prior}
     loss = -(p_mse + p_reg)
     metrics = {
         "loss": loss,
         "p_mse": p_mse,
-        "mse": mse,
+        "mse": MSE,
         "p_reg": p_reg,
-        "reg": reg,
+        "reg": Reg,
         "bayes_coeffs": mn,
-        "coeffs": masked_coeffs,
+        "coeffs": coeffs,
         "alpha": prior[:-1],
         "beta": prior[-1],
         "tau": tau,
         "its": fwd_metric[0],
-        "BIC": BIC_val,
     }
 
     return (
