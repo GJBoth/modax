@@ -35,5 +35,9 @@ state, params = variables.pop("params")
 state = (state, {"prior_init": None})  # adding prior to state
 optimizer = optimizer_def.create(params)
 train_max_iter(
-    update_fn, optimizer, state, max_iterations, log_dir=script_dir + f"BIC_initial/",
+    update_fn,
+    optimizer,
+    state,
+    max_iterations,
+    log_dir=script_dir + f"BIC_initial_burgers_0.5/",
 )

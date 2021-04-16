@@ -10,30 +10,15 @@ def BIC(prediction, y, u_t, theta, alpha, alpha_threshold=1e4):
 
     # MSE part
     mse = jnp.mean((prediction - y) ** 2)
-    L1 = n_samples * jnp.log(mse)
 
     # Reg part
-    thresholds = jnp.minimum(
-        jnp.sort(alpha[:-1]) + 0.5 * jnp.diff(jnp.sort(alpha)), 1e5
-    )
-    masks = jnp.stack([alpha < threshold for threshold in thresholds])
-    regs = (
-        jax.vmap(
-            lambda mask: jnp.linalg.lstsq(theta * jnp.where(mask == 0, 1e-7, 1.0), u_t)[
-                1
-            ]
-        )(masks).squeeze()
-        / n_samples
-    )
-
-    L2 = n_samples * jnp.log(regs)
-    BIC = (L1 + L2) + jnp.sum(masks, axis=1) * jnp.log(n_samples)
-
-    # Do with standard threshold
     mask = alpha < alpha_threshold
     coeffs, reg = jnp.linalg.lstsq(theta * jnp.where(mask == 0, 1e-7, 1.0), u_t)[:2]
     reg = reg / n_samples
     coeffs = coeffs.squeeze() * mask
+
+    # BIC
+    BIC = n_samples * (jnp.log(mse) + jnp.log(reg)) + jnp.log(n_samples) * jnp.sum(mask)
 
     return (
         BIC.squeeze(),
