@@ -16,7 +16,7 @@ from modax.training.losses.multitask import (
 script_dir = "/home/gert-jan/Documents/modax/paper/multitask/runs/"
 key = random.PRNGKey(42)
 noise = 0.10
-n_runs = 1
+n_runs = 5
 max_iterations = 5000
 
 # Making data
