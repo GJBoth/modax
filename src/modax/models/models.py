@@ -1,4 +1,4 @@
-from typing import Sequence
+from typing import Callable, Optional, Sequence, Tuple
 from ..layers.feature_generators import library_backward, library_forward
 from ..layers.regression import LeastSquares, LeastSquaresMT
 from .networks import MLP, MultiTaskMLP
@@ -6,14 +6,27 @@ from flax import linen as nn
 import jax.numpy as jnp
 
 
-class Deepmod(nn.Module):
-    features: Sequence[int]
+class DeepmodBase(nn.Module):
+    """Baseclass for DeepMoD models"""
+    approx_fn: Callable
+    approx_args: Sequence
+    library_fn: Callable
+    library_args: Sequence
+    constraint_fn: Callable
+    constraint_args: Sequence
 
-    @nn.compact
+    def setup(self):
+        self.network = self.approx_fn(*self.approx_args)
+        self.library = self.library_fn(*self.library_args)
+        self.constraint = self.constraint_fn(*self.constraint_args)
+
     def __call__(self, inputs):
-        prediction, dt, theta = library_backward(MLP(self.features), inputs)
-        coeffs = LeastSquares()((dt, theta))
-        return prediction, dt, theta, coeffs
+        prediction, features = self.library(self.network, inputs)
+        coeffs = self.constraint(features)
+        return prediction, *features, coeffs
+
+def Deepmod(network_shape: Sequence[int], library_orders: Tuple[int, int]):
+    return DeepmodBase(MLP, (network_shape, ), library_backward, (*library_orders, ), LeastSquares, ())
 
 
 class DeepmodMultiExp(nn.Module):
@@ -51,4 +64,5 @@ class DeepmodGrad(nn.Module):
         z_reg = -jnp.log(jnp.var(dt, axis=0))
         z = jnp.stack([z_mse, z_reg], axis=1)
         return z
+
 
