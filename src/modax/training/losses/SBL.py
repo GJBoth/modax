@@ -59,8 +59,10 @@ def loss_fn_SBL(params, state, model, X, y, warm_restart=True):
         tol=1e-4,
         max_iter=2000,
     )
-
-    BIC_val, (mse, reg), masked_coeffs = BIC(prediction, y, dt, theta, prior[:-1], 1e4)
+    reg = jnp.mean((dt - jnp.dot(theta, coeffs)) ** 2)
+    BIC_val, (mse, masked_reg), masked_coeffs = BIC(
+        prediction, y, dt, theta, prior[:-1], 1e4
+    )
     updated_loss_state = {"prior_init": prior}
     loss = -(p_mse + p_reg)
     metrics = {
@@ -68,9 +70,11 @@ def loss_fn_SBL(params, state, model, X, y, warm_restart=True):
         "p_mse": p_mse,
         "mse": mse,
         "p_reg": p_reg,
+        "coeffs": coeffs,
         "reg": reg,
+        "masked_reg": masked_reg,
         "bayes_coeffs": mn,
-        "coeffs": masked_coeffs,
+        "masked_coeffs": masked_coeffs,
         "alpha": prior[:-1],
         "beta": prior[-1],
         "tau": tau,
