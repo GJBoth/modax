@@ -27,7 +27,7 @@ if dataset == "burgers":
 elif dataset == "kdv":
     key = random.PRNGKey(42)
     x = jnp.linspace(-10, 10, 100)
-    t = jnp.linspace(0.1, 1.0, 10)
+    t = jnp.linspace(0.1, 1.0, 20)
     t_grid, x_grid = jnp.meshgrid(t, x, indexing="ij")
     u = doublesoliton(x_grid, t_grid, c=[5.0, 2.0], x0=[0.0, -5.0])
 
@@ -37,7 +37,7 @@ elif dataset == "kdv":
 else:
     raise NotImplementedError
 # %% Building model and params
-model = Deepmod([30, 30, 30, 1])
+model = Deepmod([30, 30, 30, 1], (5, 4))
 variables = model.init(key, X)
 
 optimizer = optim.Adam(learning_rate=2e-3, beta1=0.99, beta2=0.99)
