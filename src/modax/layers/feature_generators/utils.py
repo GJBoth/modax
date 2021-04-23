@@ -20,7 +20,7 @@ def vgrad_forward(f, x, input_idx):
 def nth_deriv_backward(f: Callable, x: jnp.ndarray, order: int, prop_idx: int):
     """ Calculates gradient up to n-th order of f w.r.t input_idx column of x.
     prop_column is the propagated column, meaning for higher order stuff the deriv is 
-    [dx^n, dx^(n-1)dym dx^(n-1)dz, ...], Returns tensor with shapes [n_samples, n_inputs, order]"""
+    [dx^n, dx^(n-1)dy, dx^(n-1)dz, ...], Returns tensor with shapes [n_samples, n_inputs, order]"""
 
     assert order > 0, "Order needs to be positive integer of 1 or higher."
 
@@ -43,8 +43,9 @@ def nth_deriv_backward(f: Callable, x: jnp.ndarray, order: int, prop_idx: int):
     return jnp.stack(df, axis=-1)
 
 
-def nth_polynomial(pred, order):
-    u = [pred]
+def nth_polynomial(x, order):
+    """Returns array with [x^1, x^2, ... x^order]."""
+    u = [x]
     for order in np.arange(order - 1):
-        u.append(pred * u[-1])
+        u.append(u[-1] * x)
     return jnp.concatenate(u, axis=1)

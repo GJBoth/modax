@@ -49,26 +49,10 @@ def library_mixed(f, x):
     return pred, dt[:, None], theta
 
 
-def library_backward(f, x):
-    """library using only jvp"""
-    # First derivs
-    df = partial(vgrad_backward, f)
-    d2f = partial(vgrad_backward, lambda y: df(y)[:, [1]])
-    d3f = partial(vgrad_backward, lambda y: d2f(y)[:, [1]])
+def library_backward(deriv_order, poly_order):
+    """ Builds library functions of deriv and poly order
+    using reverse mode autodiff, 1D output, 1D input."""
 
-    pred = f(x)
-    dt, dx = df(x).T
-    u = jnp.concatenate([jnp.ones_like(pred), pred, pred ** 2], axis=1)
-    du = jnp.concatenate(
-        [jnp.ones_like(pred), dx[:, None], d2f(x)[:, [1]], d3f(x)[:, [1]]], axis=1
-    )
-    theta = (u[:, :, None] @ du[:, None, :]).reshape(
-        -1, 12
-    )  # maybe rewrite using vmap?
-    return pred, (dt[:, None], theta)
-
-
-def library_backward_new(deriv_order, poly_order):
     def library_fn(f, x):
         # polynomial part
         pred = f(x)
