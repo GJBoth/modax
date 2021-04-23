@@ -1,6 +1,6 @@
 from jax import numpy as jnp
 from functools import partial
-from .utils import vgrad_backward, vgrad_forward
+from .utils import nth_deriv_backward, vgrad_backward, vgrad_forward, nth_polynomial
 
 
 def library_forward(f, x):
@@ -65,4 +65,27 @@ def library_backward(f, x):
     theta = (u[:, :, None] @ du[:, None, :]).reshape(
         -1, 12
     )  # maybe rewrite using vmap?
-    return pred, dt[:, None], theta
+    return pred, (dt[:, None], theta)
+
+
+def library_backward_new(deriv_order, poly_order):
+    def library_fn(f, x):
+        # polynomial part
+        pred = f(x)
+        polynomials = poly_fn(pred)
+
+        # derivative part
+        df = deriv_fn(f, x)
+        dt = df[:, 0, [0]]  # time
+        derivs = df[:, 1, :]  # space
+
+        # Making library
+        u = jnp.concatenate([jnp.ones_like(pred), polynomials], axis=1)[:, :, None]
+        du = jnp.concatenate([jnp.ones_like(pred), derivs], axis=1)[:, None, :]
+        n_features = (deriv_order + 1) * (poly_order + 1)
+        theta = jnp.matmul(u, du).reshape(-1, n_features)
+        return pred, (dt, theta)
+
+    deriv_fn = partial(nth_deriv_backward, order=deriv_order, prop_idx=1)
+    poly_fn = partial(nth_polynomial, order=poly_order)
+    return library_fn
