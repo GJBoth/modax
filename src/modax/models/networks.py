@@ -2,7 +2,7 @@ from typing import Sequence
 from jax import numpy as jnp
 from flax import linen as nn
 
-from ..layers.network import MultiTaskDense
+from ..layers.network import MultiTaskDense, SineLayer
 
 
 class MLP(nn.Module):
@@ -38,3 +38,18 @@ class MultiTaskMLP(nn.Module):
             x = nn.tanh(MultiTaskDense(feature, self.n_tasks)(x))
         x = MultiTaskDense(self.specific_features[-1], self.n_tasks)(x)
         return x.squeeze().T
+
+
+class SirenMLP(nn.Module):
+    """Sine-activated neural network, aka SIREN. Be sure to 
+    normalize inputs between -1 and 1!"""
+
+    features: Sequence[int]
+    omega_0: int = 30
+
+    @nn.compact
+    def __call__(self, inputs):
+        x = inputs
+        for layer_idx, feature in enumerate(self.features[:-1]):
+            x = SineLayer(feature, omega=self.omega_0, is_first=layer_idx == 0)
+        return nn.Dense(self.features[-1])(x)

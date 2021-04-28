@@ -1,7 +1,8 @@
 from typing import Callable
 from jax import lax
 from flax import linen as nn
-
+import jax.numpy as jnp
+from .initializers import siren_kernel_init
 
 class MultiTaskDense(nn.Module):
     features: int
@@ -20,3 +21,18 @@ class MultiTaskDense(nn.Module):
         bias = self.param("bias", self.bias_init, (self.n_tasks, 1, self.features))
         y = y + bias
         return y
+
+
+class SineLayer(nn.Module):
+    """Basic sine layer with scaling for siren."""
+    features: int
+    omega: float
+    is_first: bool
+
+    def __setup__(self):
+        self.linear = nn.Dense(features=self.features, 
+        kernel_init=siren_kernel_init(self.omega, self.is_first))
+
+    def __call__(self, inputs):
+        return jnp.sin(self.omega * self.linear(inputs))
+

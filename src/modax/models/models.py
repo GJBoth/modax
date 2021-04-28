@@ -1,7 +1,7 @@
 from typing import Callable, Optional, Sequence, Tuple
 from ..layers.feature_generators import library_backward, library_forward
 from ..layers.regression import LeastSquares, LeastSquaresMT
-from .networks import MLP, MultiTaskMLP
+from .networks import MLP, MultiTaskMLP, MLPSiren
 from flax import linen as nn
 import jax.numpy as jnp
 
@@ -28,6 +28,8 @@ class DeepmodBase(nn.Module):
 def Deepmod(network_shape: Sequence[int], library_orders: Tuple[int, int]):
     return DeepmodBase(MLP, (network_shape, ), library_backward, (*library_orders, ), LeastSquares, ())
 
+def DeepmodSiren(network_shape: Sequence[int], library_orders: Tuple[int, int]):
+    return DeepmodBase(MLPSiren, (network_shape, ), library_backward, (*library_orders, ), LeastSquares, ())
 
 class DeepmodMultiExp(nn.Module):
     """Simple feed-forward NN."""
