@@ -2,7 +2,7 @@ from jax._src.numpy.lax_numpy import ndarray
 import jax.numpy as jnp
 from jax.scipy.stats import norm
 from flax import linen as nn
-from typing import Callable, Tuple, Sequence
+from typing import Callable, Tuple, Sequence, List
 from modax.models.networks import MLP
 
 
@@ -57,20 +57,19 @@ class NormalizingFlow(nn.Module):
 
 class AmortizedNormalizingFlow(nn.Module):
     n_flow_layers: int
-    hyper_features: Sequence[int]
+    hyper_features: List[int]
 
-    @nn.compact
-    def __call__(self, inputs: jnp.nparray) -> jnp.ndarray:
-        # Get params from hyper network
-        params = MLP(self.hyper_features)(inputs)
+    def setup(self):
+        n_out = 3 * self.n_flow_layers  # 3 params per layer for planar
+        self.hyper_net = MLP(self.hyper_features + [n_out])
 
-        # Reshape
-        params = params.reshape(-1, 3, 1)  # 3 params per layer
-
+    def __call__(self, inputs: jnp.ndarray) -> jnp.ndarray:
+        params = self.hyper_net(inputs).reshape(-1, 3,
+                                                1, 1)  # 3 params per layer
         # Run NF
         log_jacob = jnp.zeros((inputs.shape[0], 1))
         z = inputs[:, 1:]  # don't take time as input
-        for layer_idx, _ in jnp.arange(self.n_flow_layers):
+        for layer_idx in jnp.arange(self.n_flow_layers):
             u, w, b = params[layer_idx]
             z, layer_log_jacob = planar_transform(u, w, b.squeeze(), z)
             log_jacob += layer_log_jacob
