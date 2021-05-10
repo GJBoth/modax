@@ -21,7 +21,7 @@ max_iterations = 5000
 
 # Making data
 x = jnp.linspace(-3, 4, 50)
-t = jnp.linspace(0.1, 5.0, 20)
+t = jnp.linspace(0.5, 5.0, 20)
 t_grid, x_grid = jnp.meshgrid(t, x, indexing="ij")
 u = burgers(x_grid, t_grid, 0.1, 1.0)
 
@@ -31,7 +31,7 @@ y += noise * jnp.std(y) * random.normal(key, y.shape)
 
 
 # Defning model and optimizers
-model = Deepmod([30, 30, 30, 1])
+model = Deepmod([30, 30, 30, 1], (4, 3))
 optimizer_def = optim.Adam(learning_rate=2e-3, beta1=0.99, beta2=0.99)
 
 # Running multitask
