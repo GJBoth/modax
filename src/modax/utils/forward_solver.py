@@ -4,16 +4,11 @@ from jax import jit, numpy as jnp, lax
 from functools import partial
 
 
-@partial(jit, static_argnums=(0, 2))
 def fwd_solver(f, z_init, cond_fun, max_iter=300):
     def _cond_fun(carry):
         z_prev, z, iteration = carry
-        return jax.lax.cond(
-            iteration >= max_iter,
-            lambda _: False,
-            lambda args: cond_fun(*args),
-            (z_prev, z),
-        )
+        return (iteration <= max_iter) & cond_fun(z_prev, z)
+
 
     def body_fun(carry):
         _, z, iteration = carry
@@ -30,7 +25,6 @@ def fwd_solver(f, z_init, cond_fun, max_iter=300):
 
 # Custom backprop function for iterative methods
 @partial(jax.custom_vjp, nondiff_argnums=(0, 3))
-@partial(jit, static_argnums=(0, 3))
 def fixed_point_solver(f, args, z_init, cond_fun, max_iter=300):
     z_star, metrics = fwd_solver(
         lambda z: f(z, *args), z_init, cond_fun, max_iter=max_iter,
@@ -38,13 +32,11 @@ def fixed_point_solver(f, args, z_init, cond_fun, max_iter=300):
     return z_star, metrics
 
 
-@partial(jit, static_argnums=(0, 3))
 def fixed_point_solver_fwd(f, args, z_init, cond_fun, max_iter):
     z_star, metrics = fixed_point_solver(f, args, z_init, cond_fun, max_iter)
     return (z_star, metrics), (z_star, args)
 
 
-@partial(jit, static_argnums=(0,))
 def fixed_point_solver_bwd(f, res, z_star_bar):
     z_star, args = res
     z_star_bar = z_star_bar[0]  # we dont take the gradient w.r.t metric
