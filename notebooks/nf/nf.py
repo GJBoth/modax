@@ -1,28 +1,24 @@
-from jax._src.numpy.lax_numpy import ndarray
 import jax.numpy as jnp
 from jax.scipy.stats import norm
 from flax import linen as nn
 from typing import Callable, Tuple, Sequence, List
 from modax.models.networks import MLP
+from jax.lax import scan
+from jax import vmap
 
 
-def planar_transform(
-    u: jnp.ndarray, w: jnp.ndarray, b: jnp.array, z: jnp.ndarray
-) -> Tuple[jnp.ndarray, jnp.ndarray]:
-    # normalize u s.t. w @ u >= -1; sufficient condition for invertibility
-    wu = w @ u.T
+def planar_transform(z, params):
+    u, w, b = params
+    # making sure its invertible
+    wu = jnp.dot(w, u.T)
     m_wu = -1 + jnp.log1p(jnp.exp(wu))
-    u_hat = u + (m_wu - wu) * w / (w @ w.T)
-
-    # Calculate transformed coordinates
-    f_z = z + u_hat * jnp.tanh(z @ w.T + b)
-
-    # Determining absolute log Jacobian
-    psi = (1 - jnp.tanh(z @ w.T + b) ** 2) @ w
-    abs_det = jnp.abs(1 + psi @ u_hat.T)
-    log_J = jnp.log(abs_det)
-
-    return f_z, log_J
+    u_hat = u + (m_wu - wu) * w / (jnp.dot(w, w.T) + 1e-6)
+    # transforming
+    a = jnp.tanh(jnp.dot(z, w.T) + b)
+    f_z = z + a * u_hat
+    psi = (1 - a ** 2) * w
+    log_det = jnp.log(jnp.abs(1 + jnp.dot(psi, u_hat.T)))
+    return f_z, log_det
 
 
 class PlanarTransform(nn.Module):
@@ -38,7 +34,7 @@ class PlanarTransform(nn.Module):
         u = self.param("u", self.u_init, (1, n_dims))
         w = self.param("w", self.w_init, (1, n_dims))
         b = self.param("b", self.b_init, (1,))
-        return planar_transform(u, w, b, inputs)
+        return planar_transform(inputs, (u, w, b))
 
 
 class NormalizingFlow(nn.Module):
@@ -56,22 +52,34 @@ class NormalizingFlow(nn.Module):
 
 
 class AmortizedNormalizingFlow(nn.Module):
-    n_flow_layers: int
     hyper_features: List[int]
+    n_layers: int
+    n_dims: int = 1
 
     def setup(self):
-        n_out = 3 * self.n_flow_layers  # 3 params per layer for planar
+        n_out = (2 * self.n_dims + 1) * self.n_layers
         self.hyper_net = MLP(self.hyper_features + [n_out])
 
-    def __call__(self, inputs: jnp.ndarray) -> jnp.ndarray:
-        params = self.hyper_net(inputs).reshape(-1, 3,
-                                                1, 1)  # 3 params per layer
-        # Run NF
-        log_jacob = jnp.zeros((inputs.shape[0], 1))
-        z = inputs[:, 1:]  # don't take time as input
-        for layer_idx in jnp.arange(self.n_flow_layers):
-            u, w, b = params[layer_idx]
-            z, layer_log_jacob = planar_transform(u, w, b.squeeze(), z)
-            log_jacob += layer_log_jacob
-        log_p = norm.logpdf(z) + log_jacob
-        return log_p
+    def __call__(
+        self, inputs: Tuple[jnp.ndarray, jnp.ndarray]
+    ) -> Tuple[jnp.ndarray, jnp.ndarray]:
+        x, t = inputs
+        params = self.reshape_params(self.hyper_net(t))
+        z, log_jac = vmap(
+            lambda batch_params, batch_x: scan(planar_transform, batch_x, batch_params)
+        )(params, x)
+        return norm.logpdf(z) + jnp.sum(log_jac, axis=-3)
+
+    def reshape_params(self, params):
+        u, w, b = jnp.split(
+            params,
+            [self.n_layers * self.n_dims, 2 * self.n_layers * self.n_dims],
+            axis=1,
+        )
+        # u, w shape: (n_batch, n_layers, 1, n_dims)
+        # b shape: (n_batch, n_layers, 1)
+        u = u.reshape(-1, self.n_layers, 1, self.n_dims)
+        w = w.reshape(-1, self.n_layers, 1, self.n_dims)
+        b = b.reshape(-1, self.n_layers, 1)
+
+        return u, w, b

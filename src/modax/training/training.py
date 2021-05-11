@@ -15,7 +15,8 @@ def train_max_iter(update_fn, optimizer, state, max_epochs, log_dir=None):
 
         if epoch % 500 == 0:
             print(f"Loss step {epoch}: {metrics['loss']}")
-
+        if jnp.any(jnp.isnan(metrics["loss"])):
+            print(epoch)
         if epoch % 25 == 0:
             logger.write(metrics, epoch)
     logger.close()

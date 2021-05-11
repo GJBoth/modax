@@ -24,12 +24,13 @@ X = jnp.concatenate([t_grid.reshape(-1, 1), x_grid.reshape(-1, 1)], axis=1)
 y = u.reshape(-1, 1)
 
 # Defning model and optimizers
-model = Deepmod([30, 30, 30, 1])
+model = Deepmod([30, 30, 30, 1], (4, 3))
 optimizer_def = optim.Adam(learning_rate=2e-3, beta1=0.99, beta2=0.99)
-noise_levels = jnp.arange(0.0, 1.01, 0.10)
-noise_levels = jax.ops.index_update(
-    noise_levels, 0, 0.01
-)  # setting first level to 0.01
+noise_levels = jnp.arange(0.1, 1.01, 0.10)
+# noise_levels = jax.ops.index_update(
+#    noise_levels, 0, 0.01
+# )  # setting first level to 0.01
+
 for noise in noise_levels:
     y_noisy = y + noise * jnp.std(y) * random.normal(key, y.shape)
     update_fn = create_update(loss_fn_SBL, (model, X, y_noisy, True))
@@ -46,9 +47,10 @@ for noise in noise_levels:
             max_iterations,
             log_dir=script_dir + f"noise_{noise:.2f}_run_{run_idx}/",
         )
+
 # RUnning different sparsity.
 # Defning model and optimizers
-model = Deepmod([30, 30, 30, 1])
+model = Deepmod([30, 30, 30, 1], (4, 3))
 optimizer_def = optim.Adam(learning_rate=2e-3, beta1=0.99, beta2=0.99)
 for n_x in jnp.arange(10, 101, 10):
     x = jnp.linspace(-10, 10, n_x)
@@ -74,3 +76,4 @@ for n_x in jnp.arange(10, 101, 10):
             max_iterations,
             log_dir=script_dir + f"nx_{n_x}_run_{run_idx}/",
         )
+

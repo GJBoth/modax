@@ -44,7 +44,7 @@ def update_prior(X, y, posterior, prior, hyper_prior):
         )
     )
 
-    return jnp.minimum(1e5, alpha), jnp.minimum(1e5, beta)
+    return jnp.minimum(alpha, 1e5), beta
 
 
 def update(prior, X, y, gram, XT_y, hyper_prior):
