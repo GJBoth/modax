@@ -56,8 +56,8 @@ def loss_fn_SBL(params, state, model, X, y, warm_restart=True):
         dt,
         prior_init=prior_init,
         hyper_prior=((1e-6, 1e-6), beta_prior),
-        tol=1e-3,
-        max_iter=300,
+        tol=1e-4,
+        max_iter=1000,
     )
     reg = jnp.mean((dt - jnp.dot(theta, coeffs)) ** 2)
     BIC_val, (mse, masked_reg), masked_coeffs = BIC(

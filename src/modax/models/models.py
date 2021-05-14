@@ -28,7 +28,6 @@ class DeepmodBase(nn.Module):
 def Deepmod(network_shape: Sequence[int], library_orders: Tuple[int, int]):
     return DeepmodBase(MLP, (network_shape, ), library_backward, (*library_orders, ), LeastSquares, ())
 
-
 class DeepmodMultiExp(nn.Module):
     """Simple feed-forward NN."""
 

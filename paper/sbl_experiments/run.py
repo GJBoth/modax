@@ -47,7 +47,6 @@ for noise in noise_levels:
             max_iterations,
             log_dir=script_dir + f"noise_{noise:.2f}_run_{run_idx}/",
         )
-
 # RUnning different sparsity.
 # Defning model and optimizers
 model = Deepmod([30, 30, 30, 1], (4, 3))
