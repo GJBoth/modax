@@ -16,8 +16,8 @@ n_runs = 1
 max_iterations = 10000
 
 # Making data
-x = jnp.linspace(-3, 4, 100)
-t = jnp.linspace(0.5, 5.0, 50)
+x = jnp.linspace(-3, 4, 50)
+t = jnp.linspace(0.5, 5.0, 20)
 t_grid, x_grid = jnp.meshgrid(t, x, indexing="ij")
 u = burgers(x_grid, t_grid, 0.1, 1.0)
 
