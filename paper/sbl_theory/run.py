@@ -12,7 +12,7 @@ from modax.training.losses.SBL import loss_fn_SBL
 script_dir = "/home/gert-jan/Documents/modax/paper/sbl_theory/runs/"
 key = random.PRNGKey(42)
 noise = 0.10
-n_runs = 1
+n_runs = 5
 max_iterations = 10000
 
 # Making data
@@ -27,9 +27,9 @@ y += noise * jnp.std(y) * random.normal(key, y.shape)
 
 
 # Defning model and optimizers
-model = Deepmod([30, 30, 30, 1], (5, 4))
+model = Deepmod([30, 30, 30, 1], (4, 3))
 optimizer_def = optim.Adam(learning_rate=2e-3, beta1=0.99, beta2=0.99)
-"""
+
 # Running PINN
 update_fn = create_update(loss_fn_pinn, (model, X, y))
 for run_idx, subkey in enumerate(random.split(key, n_runs)):
@@ -44,7 +44,7 @@ for run_idx, subkey in enumerate(random.split(key, n_runs)):
         max_iterations,
         log_dir=script_dir + f"pinn_run_{run_idx}/",
     )
-"""
+
 # Running warm restart bayes
 update_fn = create_update(loss_fn_SBL, (model, X, y, True))
 for run_idx, subkey in enumerate(random.split(key, n_runs)):
