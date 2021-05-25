@@ -16,10 +16,10 @@ n_runs = 5
 max_iterations = 20000
 
 # Making data
-x = jnp.linspace(-10, 10, 100)
-t = jnp.linspace(0.1, 1.0, 20)
+x = jnp.linspace(-6, 7, 50)
+t = jnp.linspace(0.1, 3.0, 40)
 t_grid, x_grid = jnp.meshgrid(t, x, indexing="ij")
-u = doublesoliton(x_grid, t_grid, c=[5.0, 2.0], x0=[0.0, -5.0])
+u = doublesoliton(x_grid, t_grid, c=[5.0, 2.0], x0=[-5.0, 0.0])
 
 X = jnp.concatenate([t_grid.reshape(-1, 1), x_grid.reshape(-1, 1)], axis=1)
 y = u.reshape(-1, 1)
@@ -45,7 +45,7 @@ for run_idx, subkey in enumerate(random.split(key, n_runs)):
         log_dir=script_dir + f"pinn_run_{run_idx}/",
     )
 
-"""
+
 # Running warm restart bayes
 update_fn = create_update(loss_fn_SBL, (model, X, y, True))
 for run_idx, subkey in enumerate(random.split(key, n_runs)):
@@ -61,4 +61,4 @@ for run_idx, subkey in enumerate(random.split(key, n_runs)):
         max_iterations,
         log_dir=script_dir + f"SBL_run_{run_idx}/",
     )
-"""
+
