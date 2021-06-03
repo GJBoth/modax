@@ -32,7 +32,7 @@ dt = 0.1
 sigma0 = [1.5, 0.5]
 x0 = [-5, 1]
 n_steps = 50
-n_walkers = 100
+n_walkers = 200
 
 X, t = dataset(key, n_steps, n_walkers, D, v, dt, sigma0, x0)
 # X_true = np.array(dataset(key, n_steps, 10000, D, v, dt, sigma0, x0)[0])
@@ -40,14 +40,14 @@ t += 1.0  # add an offset otherwise it has lots of issues with t=0
 model = DeepmodBase(
     AmortizedNormalizingFlow, ([30, 30], 10,), NF_library, (), LeastSquares, ()
 )
-optimizer_def = optim.Adam(learning_rate=2e-3, beta1=0.99, beta2=0.99)
+optimizer_def = optim.Adam(learning_rate=1e-3, beta1=0.99, beta2=0.99)
 
 variables = model.init(key, (X, t))
 state, params = variables.pop("params")
 state = (state, {"prior_init": None})  # adding prior to state
 optimizer = optimizer_def.create(params)
 update_fn = create_update(loss_fn_SBL, (model, (X, t)))
-optimizer, state = train_max_iter(update_fn, optimizer, state, 20000)
+optimizer, state = train_max_iter(update_fn, optimizer, state, 200000)
 
 jnp.save("trained_model", optimizer.target)
 
