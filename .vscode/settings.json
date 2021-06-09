@@ -1,5 +1,4 @@
 {
-    "python.pythonPath": "/home/gert-jan/anaconda3/envs/updated/bin/python",
-    "python.languageServer": "Pylance",
-    "restructuredtext.languageServer.disabled": true
+    "restructuredtext.confPath": "",
+    "python.pythonPath": "/home/gert-jan/anaconda3/bin/python"
 }
