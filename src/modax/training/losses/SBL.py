@@ -26,7 +26,7 @@ def BIC(prediction, y, u_t, theta, alpha, alpha_threshold=1e4):
     )
 
 
-def loss_fn_SBL(params, state, model, X, y, warm_restart=True):
+def loss_fn_SBL(params, state, model, X, y, warm_restart=True, beta_prior=None):
     model_state, loss_state = state
     variables = {"params": params, **model_state}
     (prediction, dt, theta, coeffs), updated_model_state = model.apply(
@@ -41,10 +41,11 @@ def loss_fn_SBL(params, state, model, X, y, warm_restart=True):
 
     # Regression stuff
     # we dont want the gradient
-    beta_prior = (
-        n_samples / 2,
-        n_samples / (jax.lax.stop_gradient(tau)),
-    )
+    if beta_prior is None:
+        beta_prior = (
+            n_samples / 2,
+            n_samples / (jax.lax.stop_gradient(tau)),
+        )
 
     if warm_restart:
         prior_init = loss_state["prior_init"]
@@ -59,7 +60,7 @@ def loss_fn_SBL(params, state, model, X, y, warm_restart=True):
         tol=1e-4,
         max_iter=1000,
     )
-    reg = jnp.mean((dt - jnp.dot(theta, coeffs)) ** 2)
+    reg = jnp.mean((dt - jnp.dot(theta, mn)) ** 2)
     BIC_val, (mse, masked_reg), masked_coeffs = BIC(
         prediction, y, dt, theta, prior[:-1], 1e4
     )
